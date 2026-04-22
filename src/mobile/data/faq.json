@@ -1,0 +1,110 @@
+[
+  {
+    "category": "Booking",
+    "title": "How do I book a ticket on Axplore?",
+    "description": "Search your destination, choose an option, enter passenger details, and complete payment to confirm booking.",
+    "order": 1
+  },
+  {
+    "category": "Booking",
+    "title": "Can I book tickets for someone else?",
+    "description": "Yes, you can enter passenger details for anyone while booking.",
+    "order": 2
+  },
+  {
+    "category": "Booking",
+    "title": "Where can I check my booking status?",
+    "description": "Go to 'My Bookings' section in the app to track your bookings.",
+    "order": 3
+  },
+  {
+    "category": "Booking",
+    "title": "Can I modify passenger details after booking?",
+    "description": "This depends on the service provider. Please check booking details or contact support.",
+    "order": 4
+  },
+  {
+    "category": "Payments",
+    "title": "What payment methods are supported?",
+    "description": "We support UPI, debit/credit cards, net banking, and wallets.",
+    "order": 5
+  },
+  {
+    "category": "Payments",
+    "title": "Is my payment secure?",
+    "description": "Yes, all payments are processed via secure encrypted payment gateways.",
+    "order": 6
+  },
+  {
+    "category": "Payments",
+    "title": "What should I do if payment fails?",
+    "description": "Retry with another method. If money is deducted, it will be refunded within 5–7 business days.",
+    "order": 7
+  },
+  {
+    "category": "Refunds",
+    "title": "What is the refund policy?",
+    "description": "Refunds depend on provider cancellation policies shown during booking.",
+    "order": 8
+  },
+  {
+    "category": "Refunds",
+    "title": "How long does refund take?",
+    "description": "Refunds are processed within 5–7 business days.",
+    "order": 9
+  },
+  {
+    "category": "Cancellation",
+    "title": "Can I cancel my booking?",
+    "description": "Yes, from 'My Bookings'. Charges may apply.",
+    "order": 10
+  },
+  {
+    "category": "Cancellation",
+    "title": "Can I reschedule my booking?",
+    "description": "Depends on provider policy. Contact support if needed.",
+    "order": 11
+  },
+  {
+    "category": "Tickets",
+    "title": "How will I receive my ticket?",
+    "description": "Ticket is available in app and sent via email/SMS.",
+    "order": 12
+  },
+  {
+    "category": "Tickets",
+    "title": "Do I need printed ticket?",
+    "description": "Usually digital ticket is enough unless specified.",
+    "order": 13
+  },
+  {
+    "category": "Support",
+    "title": "How can I contact support?",
+    "description": "Use help section in app or contact via email/phone.",
+    "order": 14
+  },
+  {
+    "category": "Account",
+    "title": "How do I update my profile?",
+    "description": "Go to profile section and edit your details.",
+    "order": 15
+  },
+  {
+    "category": "Security",
+    "title": "How is my data protected?",
+    "description": "We follow strict security and encryption standards.",
+    "order": 16
+  },
+  {
+    "category": "General",
+    "title": "Are there hidden charges?",
+    "description": "No, all charges are shown before payment.",
+    "order": 17
+  },
+  {
+    "category": "General",
+    "title": "What if my trip is cancelled?",
+    "description": "You will get refund or alternative options.",
+    "order": 18
+  }
+]

@@ -1,0 +1,538 @@
+-- =====================================================
+-- EXTENSIONS
+-- =====================================================
+
+-- Required for UUID generation
+CREATE EXTENSION IF NOT EXISTS uuid-ossp;
+
+-- Required for storing face recognition embeddings
+CREATE EXTENSION IF NOT EXISTS vector;
+
+
+-- =====================================================
+-- TRIP TABLE
+-- Represents a confirmed travel program created after
+-- a Lead is finalized (Lead → Trip conversion).
+-- This table becomes the operational anchor for:
+-- PAX assignment, itinerary, documents, attendance,
+-- notifications, SOS alerts, feedback, etc.
+-- =====================================================
+
+CREATE TABLE trip (
+
+```
+trip_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+-- Unique identifier for the trip
+
+lead_id UUID REFERENCES lead(lead_id),
+-- Reference to the lead from which this trip originated
+-- Created when lead.status = WON / CONFIRMED
+
+corporate_id UUID NOT NULL REFERENCES corporate(corporate_id),
+-- Corporate client associated with the trip
+
+trip_name VARCHAR(200) NOT NULL,
+-- Human-readable name of the trip
+-- Example: "Dubai Incentive Trip 2026"
+
+trip_code VARCHAR(50),
+-- Optional internal code used by operations team
+-- Example: "DXB-INC-2026"
+
+destination VARCHAR(200),
+-- Primary destination of the trip
+
+start_date DATE,
+end_date DATE,
+-- Trip duration
+
+total_pax INTEGER,
+-- Number of travelers expected for the trip
+
+trip_status VARCHAR(50),
+-- planned / active / completed / cancelled
+
+remarks TEXT,
+-- Additional notes for operations team
+
+-- =====================================================
+-- HOUSEKEEPING / AUDIT FIELDS
+-- =====================================================
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+-- Timestamp when trip record was created
+
+created_by UUID,
+-- User who created the trip record
+
+modified_at TIMESTAMP,
+-- Timestamp of last update
+
+modified_by UUID,
+-- User who last modified the record
+
+is_active BOOLEAN DEFAULT TRUE,
+-- Indicates whether trip is currently active
+
+is_deleted BOOLEAN DEFAULT FALSE
+-- Soft delete flag (avoids physical deletion)
+```
+
+);
+
+
+-- =====================================================
+-- PAX MASTER TABLE
+-- Stores traveler / passenger profile
+-- =====================================================
+
+CREATE TABLE pax (
+pax_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  -- Unique traveler ID
+
+```
+corporate_id UUID NOT NULL REFERENCES corporate(corporate_id), -- Corporate owner
+division_id UUID REFERENCES division(division_id),             -- Optional division
+subdivision_id UUID REFERENCES subdivision(subdivision_id),    -- Optional subdivision
+
+employee_code VARCHAR(50),  -- Employee ID from corporate HR system (optional)
+
+first_name VARCHAR(100) NOT NULL,
+last_name VARCHAR(100),
+
+gender VARCHAR(20),
+date_of_birth DATE,
+nationality VARCHAR(100),
+
+phone_number VARCHAR(20) NOT NULL,  -- Primary login identifier
+email VARCHAR(150),
+pax_emergency_contact_number VARCHAR(20),
+
+pax_type VARCHAR(50), -- employee / guest / vip / speaker etc
+
+-- Housekeeping fields
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+created_by UUID,
+modified_at TIMESTAMP,
+modified_by UUID,
+
+is_active BOOLEAN DEFAULT TRUE,
+is_deleted BOOLEAN DEFAULT FALSE
+```
+
+);
+
+-- Phone must be unique
+ALTER TABLE pax ADD CONSTRAINT uq_pax_phone UNIQUE (phone_number);
+
+-- Email must be unique if provided
+CREATE UNIQUE INDEX uq_pax_email
+ON pax(email)
+WHERE email IS NOT NULL;
+
+-- Employee code unique per corporate when provided
+CREATE UNIQUE INDEX uq_pax_employee
+ON pax(corporate_id, employee_code)
+WHERE employee_code IS NOT NULL;
+
+-- =====================================================
+-- PAX ACCOUNT LOGIN
+-- Authentication credentials
+-- =====================================================
+
+CREATE TABLE pax_account (
+account_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+
+```
+password_hash TEXT,   -- Password hash (if password login used)
+last_login TIMESTAMP,
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+created_by UUID,
+
+modified_at TIMESTAMP,
+modified_by UUID,
+
+is_active BOOLEAN DEFAULT TRUE
+```
+
+);
+
+-- =====================================================
+-- PASSWORD RESET
+-- Used for forgot password functionality
+-- =====================================================
+
+CREATE TABLE pax_password_reset (
+reset_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+
+```
+reset_token TEXT,     -- secure reset token
+expiry_time TIMESTAMP,
+
+is_used BOOLEAN DEFAULT FALSE,
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```
+
+);
+
+-- =====================================================
+-- DEVICE REGISTRATION
+-- Stores mobile devices for push notifications
+-- =====================================================
+
+CREATE TABLE pax_device (
+device_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+
+```
+device_type VARCHAR(50), -- ios / android
+device_token TEXT,       -- push notification token
+
+app_version VARCHAR(50),
+
+registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+created_by UUID
+```
+
+);
+
+-- =====================================================
+-- PROFILE PHOTO
+-- Display photo (not used for recognition)
+-- =====================================================
+
+CREATE TABLE pax_profile_photo (
+photo_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+
+```
+photo_url TEXT,  -- stored in object storage (S3/Azure)
+
+is_primary BOOLEAN DEFAULT TRUE,
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+created_by UUID,
+
+modified_at TIMESTAMP,
+modified_by UUID
+```
+
+);
+
+-- =====================================================
+-- DOCUMENT UPLOAD
+-- Stores traveler documents required for travel
+-- =====================================================
+
+CREATE TABLE pax_document (
+    document_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    pax_id UUID NOT NULL REFERENCES pax(pax_id),
+
+    document_type_id UUID NOT NULL REFERENCES document_type_master(document_type_id),
+    -- FK reference to master table (passport, visa, pan, aadhaar etc)
+
+    document_number VARCHAR(100),
+
+    document_url TEXT, 
+    -- File location in storage (S3 / Azure Blob / etc)
+
+    issue_date DATE,
+    expiry_date DATE,
+
+    verified BOOLEAN DEFAULT FALSE,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by UUID,
+
+    modified_at TIMESTAMP,
+    modified_by UUID,
+
+    is_active BOOLEAN DEFAULT TRUE,
+    is_deleted BOOLEAN DEFAULT FALSE
+);
+
+-- =====================================================
+-- DOCUMENT OCR PROCESSING
+-- Stores OCR extracted information from uploaded documents
+-- =====================================================
+
+CREATE TABLE pax_document_ocr (
+    ocr_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    document_id UUID NOT NULL REFERENCES pax_document(document_id),
+    -- OCR always linked to a specific uploaded document
+
+    extracted_data JSONB,
+    -- Flexible JSON storage for OCR fields
+    -- Example: {"passport_number":"A1234567","name":"John Doe"}
+
+    raw_text TEXT,
+    -- Raw OCR output
+
+    confidence_score NUMERIC(5,4),
+    -- OCR confidence level
+
+    verification_status VARCHAR(50),
+    -- processed / verified / rejected / manual_review
+
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by UUID
+);
+
+
+-- =====================================================
+-- PAX TRIP MAPPING
+-- Connects traveler with trips
+-- =====================================================
+
+CREATE TABLE pax_trip (
+pax_trip_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+trip_id UUID REFERENCES trip(trip_id),
+
+booking_status VARCHAR(50),
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+created_by UUID,
+
+modified_at TIMESTAMP,
+modified_by UUID
+
+);
+
+-- =====================================================
+-- TRIP FEEDBACK
+-- Feedback submitted by traveler after trip
+-- =====================================================
+
+CREATE TABLE pax_trip_feedback (
+feedback_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+trip_id UUID REFERENCES trip(trip_id),
+
+```
+rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+
+comments TEXT,
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+created_by UUID
+```
+
+);
+
+-- =====================================================
+-- NOTIFICATIONS
+-- App notifications
+-- =====================================================
+
+CREATE TABLE pax_notification (
+notification_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+```
+title VARCHAR(200),
+message TEXT,
+
+notification_type VARCHAR(50), -- trip_update / reminder etc
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+created_by UUID
+```
+
+);
+
+-- =====================================================
+-- NOTIFICATION READ STATUS
+-- Tracks read/unread status per traveler
+-- =====================================================
+
+CREATE TABLE pax_notification_read (
+read_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+notification_id UUID REFERENCES pax_notification(notification_id),
+
+```
+is_read BOOLEAN DEFAULT TRUE,
+
+read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```
+
+);
+
+
+
+-- =====================================================
+-- LIVE LOCATION TRACKING
+-- Used for safety or coordination
+-- =====================================================
+
+CREATE TABLE pax_live_location (
+live_location_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+
+```
+latitude DECIMAL(9,6),
+longitude DECIMAL(9,6),
+
+recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```
+
+);
+
+-- =====================================================
+-- FACE BIOMETRIC DATA
+-- Stores embedding used for face recognition login
+-- =====================================================
+
+CREATE TABLE pax_face_biometric (
+biometric_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+
+```
+face_embedding VECTOR(512), -- vector used for similarity matching
+
+reference_image_url TEXT,
+
+is_primary BOOLEAN DEFAULT TRUE,
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+created_by UUID,
+
+modified_at TIMESTAMP,
+modified_by UUID
+```
+
+);
+
+-- =====================================================
+-- FACE LOGIN LOG
+-- Audit log for biometric authentication
+-- =====================================================
+
+CREATE TABLE pax_face_login_log (
+login_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+
+```
+confidence_score NUMERIC(5,4),
+
+device_id VARCHAR(200),
+
+latitude DECIMAL(9,6),
+longitude DECIMAL(9,6),
+
+login_status VARCHAR(50),
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```
+
+);
+
+
+-- =====================================================
+-- SOS ALERT
+-- Emergency button in mobile app
+-- =====================================================
+
+CREATE TABLE pax_sos_alert (
+sos_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+trip_id UUID REFERENCES trip(trip_id),
+
+```
+latitude DECIMAL(9,6),
+longitude DECIMAL(9,6),
+
+alert_message TEXT,
+
+status VARCHAR(50),
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+resolved_at TIMESTAMP
+```
+
+);
+
+-- =====================================================
+-- SUPPORT TICKETS
+-- Helpdesk system for travelers
+-- =====================================================
+
+CREATE TABLE support_ticket (
+ticket_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+trip_id UUID REFERENCES trip(trip_id),
+
+```
+subject VARCHAR(200),
+description TEXT,
+
+priority VARCHAR(50),
+status VARCHAR(50),
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+created_by UUID,
+
+modified_at TIMESTAMP,
+modified_by UUID
+```
+
+);
+
+-- =====================================================
+-- SUPPORT TICKET MESSAGES
+-- Conversation inside support ticket
+-- =====================================================
+
+CREATE TABLE support_ticket_message (
+message_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ticket_id UUID REFERENCES support_ticket(ticket_id),
+
+```
+sender_type VARCHAR(50), -- pax / support
+
+message TEXT,
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```
+
+);
+
+
+-- =====================================================
+-- MOBILE DATA SYNC
+-- Tracks mobile app data synchronization
+-- =====================================================
+
+CREATE TABLE pax_mobile_sync (
+sync_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+pax_id UUID REFERENCES pax(pax_id),
+
+```
+device_id VARCHAR(200),
+
+last_sync_time TIMESTAMP,
+app_version VARCHAR(50),
+
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```
+
+);
+
+-- =====================================================
+-- INDEXES
+-- =====================================================
+
+CREATE INDEX idx_pax_corporate ON pax(corporate_id);
+CREATE INDEX idx_pax_trip_trip ON pax_trip(trip_id);
+CREATE INDEX idx_pax_trip_pax ON pax_trip(pax_id);
+CREATE INDEX idx_notification_read ON pax_notification_read(pax_id);
+CREATE INDEX idx_pax_face ON pax_face_biometric(pax_id);

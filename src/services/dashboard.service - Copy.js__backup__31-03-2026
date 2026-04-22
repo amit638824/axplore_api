@@ -1,0 +1,455 @@
+/**
+ * Dashboard Service (Optimized)
+ */
+
+const { prisma } = require('../config/database');
+const { NotFoundError, ValidationError } = require('../utils/errors');
+const { PAGINATION } = require('../config/constants');
+
+const getTeamUserIds = async (userId) => {
+    const result = [];
+    const visited = new Set();
+
+    const fetchTeam = async (ids) => {
+        console.log("ids", ids);
+        const users = await prisma.appUser.findMany({
+            where: { primary_manager_user_id: { in: ids } },
+            select: { userId: true },
+        });
+
+        const newIds = users.map(u => u.userId).filter(u => !visited.has(u));
+        newIds.forEach(id => visited.add(id));
+        if (newIds.length > 0) await fetchTeam(newIds);
+        result.push(...newIds);
+    };
+
+    visited.add(userId);
+    result.push(userId); // include self
+    await fetchTeam([userId]);
+    return result;
+};
+
+
+const isAdmin = async (userId) => {
+    const roles = await prisma.userRole.findMany({
+        where: {
+            userId,
+            role: { roleCode: { equals: 'admin', mode: 'insensitive' } },
+        },
+        select: { roleId: true },
+    });
+    return roles.length > 0;
+};
+/* ==============================
+    COMMON HELPERS
+================================*/
+
+// Get Financial Year Start
+const getFinancialYearStart = (now) => {
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    return currentMonth >= 3 ? currentYear : currentYear - 1;
+};
+
+// Get Last Day of Month
+const getLastDayOfMonth = (year, month) => {
+    return new Date(year, month + 1, 0, 23, 59, 59, 999);
+};
+
+// Get Date Range based on type
+const getDateRange = (dataType) => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const fyStartYear = getFinancialYearStart(now);
+
+    let startDate = null;
+    let endDate = new Date(now.setHours(23, 59, 59, 999));
+
+    switch (dataType) {
+        case "mtd":
+            startDate = new Date(currentYear, currentMonth, 1);
+            break;
+
+        case "ytd":
+            startDate = new Date(fyStartYear, 3, 1);
+            break;
+
+        case "q1":
+            startDate = new Date(fyStartYear, 3, 1);
+            endDate = getLastDayOfMonth(fyStartYear, 5);
+            break;
+
+        case "q2":
+            startDate = new Date(fyStartYear, 6, 1);
+            endDate = getLastDayOfMonth(fyStartYear, 8);
+            break;
+
+        case "q3":
+            startDate = new Date(fyStartYear, 9, 1);
+            endDate = getLastDayOfMonth(fyStartYear, 11);
+            break;
+
+        case "q4":
+            startDate = new Date(fyStartYear + 1, 0, 1);
+            endDate = getLastDayOfMonth(fyStartYear + 1, 2);
+            break;
+
+        case "all":
+        default:
+            startDate = new Date(fyStartYear, 3, 1);
+            endDate = getLastDayOfMonth(fyStartYear + 1, 2);
+            break;
+    }
+
+    return { startDate, endDate };
+};
+
+// Apply Date Filter
+const applyDateFilter = (where, startDate, endDate) => {
+    if (startDate) {
+        where.createdAt = {
+            gte: startDate,
+            lte: endDate,
+        };
+    }
+};
+
+// Role Filter
+const applyRoleFilter = async (where, createdBy, email, useRelation = false) => {
+    let userId = createdBy;
+    const admin = await isAdmin(userId);
+    if (admin) {
+        return;
+    }
+    // get full team hierarchy
+    const teamUserIds = await getTeamUserIds(userId);
+    // where.OR = [
+    //     { salesUserId: { in: teamUserIds } },
+    //     { contractingHeadUserId: { in: teamUserIds } },
+    //     { createdBy: { in: teamUserIds } },
+    //     { ops_head_user_id: { in: teamUserIds } },
+    // ];
+
+
+    if (useRelation) {
+        where.lead = {
+            OR: [
+                { salesUserId: { in: teamUserIds } },
+                { contractingHeadUserId: { in: teamUserIds } },
+                { createdBy: { in: teamUserIds } },
+                { ops_head_user_id: { in: teamUserIds } },
+            ],
+        };
+    } else {
+        where.OR = [
+            { salesUserId: { in: teamUserIds } },
+            { contractingHeadUserId: { in: teamUserIds } },
+            { createdBy: { in: teamUserIds } },
+            { ops_head_user_id: { in: teamUserIds } },
+        ];
+    }
+
+    return where;
+};
+
+
+/* ==============================
+    MAIN FUNCTIONS
+================================*/
+
+// Lead Count
+// const getLeadCount = async (createdBy, email, dataType) => {
+//     let where = {};
+//     const { startDate, endDate } = getDateRange(dataType);
+
+//     applyRoleFilter(where, createdBy, email);
+//     applyDateFilter(where, startDate, endDate);
+
+//     return await prisma.lead.count({ where }) || 0;
+// };
+
+const getLeadCount = async (createdBy, email, dataType) => {
+    let where = {};
+    const { startDate, endDate } = getDateRange(dataType);
+    const conditions = [];
+    // Role filter
+    const roleFilter = await applyRoleFilter(where, createdBy, email);
+    if (roleFilter) conditions.push(roleFilter);
+
+    // Date filter
+    if (startDate && endDate) {
+        conditions.push({
+            createdAt: {
+                gte: startDate,
+                lte: endDate,
+            }
+        });
+    }
+    where = conditions.length > 0 ? { AND: conditions } : {};
+    // console.log("wherehhh", JSON.stringify(where, null, 2));
+    return await prisma.lead.count({ where }) || 0;
+};
+
+// Customer Count
+const getCustomerCount = async (dataType) => {
+
+    // let where = {};
+    // const { startDate, endDate } = getDateRange(dataType);
+    // if (dataType === "all") {
+    //     where.isActive = true;
+    // }
+    // applyDateFilter(where, startDate, endDate);
+
+
+    let where = {};
+    const conditions = [];
+    const { startDate, endDate } = getDateRange(dataType);
+
+    // Date filter
+    if (startDate && endDate) {
+        conditions.push({
+            createdAt: {
+                gte: startDate,
+                lte: endDate,
+            }
+        });
+    }
+
+    // Active status filter
+    conditions.push({ isActive: true });
+
+    where = conditions.length > 0 ? { AND: conditions } : {};
+
+    return await prisma.corporate.count({ where }) || 0;
+};
+
+// Total Budget
+const getTotalBudget = async (createdBy, email, dataType) => {
+    // let where = {};
+    // const { startDate, endDate } = getDateRange(dataType);
+
+    // applyRoleFilter(where, createdBy, email, true);
+    // applyDateFilter(where, startDate, endDate);
+
+    let where = {};
+    const conditions = [];
+    const { startDate, endDate } = getDateRange(dataType);
+
+    // Role filter
+    const roleFilter = await applyRoleFilter(where, createdBy, email, true);
+    if (roleFilter) conditions.push(roleFilter);
+
+    // Date filter
+    if (startDate && endDate) {
+        conditions.push({
+            createdAt: {
+                gte: startDate,
+                lte: endDate,
+            }
+        });
+    }
+
+
+    console.log("where total budget", JSON.stringify(where, null, 2));
+
+    where = conditions.length > 0 ? { AND: conditions } : {};
+
+    const result = await prisma.leadTripInfo.aggregate({
+        _sum: { totalBudget: true },
+        where,
+    });
+
+    return result._sum.totalBudget || 0;
+};
+
+// Total Revenue
+const getTotalRevenue = async (createdBy, email, dataType) => {
+    // let where = {};
+    // const { startDate, endDate } = getDateRange(dataType);
+
+    // applyRoleFilter(where, createdBy, email);
+    // applyDateFilter(where, startDate, endDate);
+
+    let where = {};
+    const conditions = [];
+    const { startDate, endDate } = getDateRange(dataType);
+
+    // Role filter
+    const roleFilter = await applyRoleFilter(where, createdBy, email);
+    if (roleFilter) conditions.push(roleFilter);
+
+    // Date filter
+    if (startDate && endDate) {
+        conditions.push({
+            createdAt: {
+                gte: startDate,
+                lte: endDate,
+            }
+        });
+    }
+
+    console.log("where total revenue", JSON.stringify(where, null, 2));
+    where = conditions.length > 0 ? { AND: conditions } : {};
+
+    const result = await prisma.lead.aggregate({
+        _sum: { approvedAmount: true },
+        where,
+    });
+
+    return result._sum.approvedAmount || 0;
+};
+
+// Lead Status Count
+const getTotalLeadStatusTime = async (createdBy, email, dataType) => {
+    // let where = {};
+    // const { startDate, endDate } = getDateRange(dataType);
+
+    // applyRoleFilter(where, createdBy, email);
+    // applyDateFilter(where, startDate, endDate);
+
+    let where = {};
+    const conditions = [];
+    const { startDate, endDate } = getDateRange(dataType);
+
+    // Role filter
+    const roleFilter = await applyRoleFilter(where, createdBy, email);
+    if (roleFilter) conditions.push(roleFilter);
+
+    // Date filter
+    if (startDate && endDate) {
+        conditions.push({
+            createdAt: {
+                gte: startDate,
+                lte: endDate,
+            }
+        });
+    }
+
+    where = conditions.length > 0 ? { AND: conditions } : {};
+
+    const grouped = await prisma.lead.groupBy({
+        by: ['leadStatusId'],
+        where,
+        _count: { leadStatusId: true },
+    });
+
+    const statusIds = grouped.map(g => g.leadStatusId);
+
+    const statuses = await prisma.masterLeadStatus.findMany({
+        where: { leadStatusId: { in: statusIds } }
+    });
+
+    return grouped.map(g => {
+        const status = statuses.find(s => s.leadStatusId === g.leadStatusId);
+        return {
+            status_code: status?.statusCode,
+            status_name: status?.statusName,
+            total: g._count.leadStatusId
+        };
+    });
+};
+
+// Graph (Time-series grouped by Month and Stage)
+const getGraph = async (createdBy, email, dataType) => {
+    // let where = {};
+    // const { startDate, endDate } = getDateRange(dataType);
+
+    // applyRoleFilter(where, createdBy, email);
+    // applyDateFilter(where, startDate, endDate);
+
+    let where = {};
+    const conditions = [];
+    const { startDate, endDate } = getDateRange(dataType);
+
+    // Role filter
+    const roleFilter = await applyRoleFilter(where, createdBy, email);
+    if (roleFilter) conditions.push(roleFilter);
+
+    // Date filter
+    if (startDate && endDate) {
+        conditions.push({
+            createdAt: {
+                gte: startDate,
+                lte: endDate,
+            }
+        });
+    }
+
+    where = conditions.length > 0 ? { AND: conditions } : {};
+
+    // Fetch leads with necessary fields
+    const leads = await prisma.lead.findMany({
+        where,
+        select: {
+            createdAt: true,
+            stage: true,
+        },
+    });
+
+    // Grouping by Month and Stage in JS
+    const grouped = leads.reduce((acc, lead) => {
+        if (!lead.stage) return acc;
+
+        // Extract "Jan 26" format for labels
+        const d = new Date(lead.createdAt);
+        const monthLabel = d.toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
+        const sortKey = d.toISOString().slice(0, 7); // "2026-03" for sorting
+
+        const key = `${sortKey}_${lead.stage}`;
+
+        if (!acc[key]) {
+            acc[key] = {
+                month: monthLabel,
+                stage: lead.stage,
+                total: 0,
+                sortKey
+            };
+        }
+        acc[key].total += 1;
+        return acc;
+    }, {});
+
+    // Sort by chronological order and return
+    return Object.values(grouped).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+};
+
+/**
+ * Unified Dashboard Stats (Combined for performance)
+ */
+const getDashboardStats = async (createdBy, email, dataType) => {
+    const [
+        leadCount,
+        customerCount,
+        totalBudget,
+        totalRevenue,
+        leadStatusTime,
+        graphData
+    ] = await Promise.all([
+        getLeadCount(createdBy, email, dataType),
+        getCustomerCount(dataType),
+        getTotalBudget(createdBy, email, dataType),
+        getTotalRevenue(createdBy, email, dataType),
+        getTotalLeadStatusTime(createdBy, email, dataType),
+        getGraph(createdBy, email, dataType)
+    ]);
+
+    return {
+        leadCount,
+        customerCount,
+        totalBudget,
+        totalRevenue,
+        leadStatusTime,
+        graphData
+    };
+};
+
+module.exports = {
+    getLeadCount,
+    getCustomerCount,
+    getTotalBudget,
+    getTotalRevenue,
+    getTotalLeadStatusTime,
+    getGraph,
+    getDashboardStats,
+};
