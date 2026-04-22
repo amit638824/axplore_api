@@ -1080,6 +1080,7 @@ model pax {
   pax_device               pax_device[]
   pax_emergency_contact    pax_emergency_contact[]
   trip_pax                 trip_pax[]
+  pax_sos                  pax_sos[]
 
   @@unique([mobile_no, current_country_code], map: "uq_pax_mobile_country")
   @@index([email], map: "idx_pax_email")

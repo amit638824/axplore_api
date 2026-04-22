@@ -533,6 +533,7 @@ exports.passwordLogin = async (data) => {
   const {
     mobile,
     countryCode,
+    emailAddress,
     password,
     deviceId,
     deviceName,
@@ -540,27 +541,34 @@ exports.passwordLogin = async (data) => {
     fcmtoken,
   } = data;
 
-  if (!mobile || !password || !deviceId) {
+  if ((!mobile && !emailAddress) || !password || !deviceId) {
     throw {
-      message: "mobile, password and deviceId required",
+      message: "mobile/emailAddress, password and deviceId required",
       statusCode: 400,
     };
   }
 
   // ================= USER =================
-  const user = await prisma.pax.findFirst({
-    where: {
-      mobile_no: mobile,
-      current_country_code: countryCode,
-    },
-  });
+  let user;
+  if (emailAddress) {
+    user = await prisma.pax.findUnique({
+      where: { email: emailAddress },
+    });
+  } else {
+    user = await prisma.pax.findFirst({
+      where: {
+        mobile_no: mobile,
+        current_country_code: countryCode,
+      },
+    });
+  }
 
   if (!user) {
     throw { message: "User not found", statusCode: 404 };
   }
 
   if (user.status !== "ACTIVE") {
-    throw { message: "User inactive", statusCode: 403 };
+    throw { message: "User inactive. Please contact support.", statusCode: 403 };
   }
 
   // ================= AUTH =================
@@ -1297,5 +1305,289 @@ exports.removeFace = async (currentUser) => {
   return {
     success: true,
     message: "Face removed successfully",
+  };
+};
+
+/**
+ * Register a new user (Pax)
+ * @param {Object} data - User registration data
+ */
+exports.registerUser = async (data) => {
+  const {
+    mobileNumber,
+    firstName,
+    middleName,
+    lastName,
+    emailAddress,
+    password,
+    gender,
+    dob,
+  } = data;
+
+  // 1. Basic Validation
+  if (!mobileNumber || !firstName || !emailAddress || !password) {
+    throw { message: "Missing required fields (mobileNumber, firstName, emailAddress, password)", statusCode: 400 };
+  }
+
+  // 2. Check existing user in pax table
+  const existingPax = await prisma.pax.findFirst({
+    where: {
+      OR: [
+        { mobile_no: mobileNumber },
+        { email: emailAddress }
+      ]
+    }
+  });
+
+  if (existingPax) {
+    const field = existingPax.mobile_no === mobileNumber ? "Mobile number" : "Email address";
+    throw { message: `${field} is already registered`, statusCode: 400 };
+  }
+
+  // 3. Hash password
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash(password, salt);
+
+  // 4. Convert DOB from dd/mm/yyyy to Date object
+  let isoDob = null;
+  if (dob) {
+    const [day, month, year] = dob.split("/");
+    if (day && month && year) {
+      isoDob = new Date(`${year}-${month}-${day}`);
+      if (isNaN(isoDob.getTime())) {
+        throw { message: "Invalid date format for dob. Use dd/mm/yyyy", statusCode: 400 };
+      }
+    }
+  }
+
+  // 5. Create user and auth records in a transaction
+  const newPax = await prisma.$transaction(async (tx) => {
+    // Create Pax record
+    const createdPax = await tx.pax.create({
+      data: {
+        first_name: firstName,
+        middle_name: middleName || null,
+        last_name: lastName || null,
+        email: emailAddress,
+        mobile_no: mobileNumber,
+        gender: gender || null,
+        date_of_birth: isoDob,
+        status: "ACTIVE",
+        is_verified: false, // Onboarding requires verification later
+      },
+    });
+
+    // Create Auth User record
+    await tx.auth_user.create({
+      data: {
+        pax_id: createdPax.pax_id,
+        login_email: emailAddress,
+        login_mobile_no: mobileNumber,
+        password_hash: passwordHash,
+        status: "ACTIVE",
+      },
+    });
+
+    return createdPax;
+  });
+
+  // 6. Return response in requested format
+  return {
+    userId: newPax.pax_id,
+    mobileNumber: newPax.mobile_no,
+    firstName: newPax.first_name,
+    middleName: newPax.middle_name,
+    lastName: newPax.last_name,
+    emailAddress: newPax.email,
+    gender: newPax.gender,
+    dob: dob,
+    isVerified: newPax.is_verified,
+    createdAt: newPax.created_at,
+  };
+};
+
+/**
+ * Mobile Number Verification
+ * @param {string} mobileNumber
+ */
+exports.verifyMobileNumber = async (mobileNumber) => {
+  // 1. Check if already registered
+  const existingUser = await prisma.pax.findFirst({
+    where: { mobile_no: mobileNumber },
+  });
+
+  if (existingUser) {
+    return {
+      mobileNumber,
+      isValid: true,
+      isRegistered: true,
+      otpRequired: false,
+      nextStep: "LOGIN",
+      alreadyRegistered: true // internal flag for controller
+    };
+  }
+
+  // 2. Generate OTP if not registered
+  const otp = "123456"; // Default for testing as per common patterns in this repo
+  const otpReferenceId = "OTP" + Math.random().toString(36).substr(2, 9).toUpperCase();
+  
+  // Store OTP in memory (using the existing otpStore Map)
+  const key = `MOBILE_${mobileNumber}`;
+  otpStore.set(key, {
+    otp,
+    otpReferenceId,
+    expiresAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+  });
+
+  console.log(`OTP for ${mobileNumber}: ${otp} (Ref: ${otpReferenceId})`);
+
+  return {
+    mobileNumber,
+    isValid: true,
+    isRegistered: false,
+    otpRequired: true,
+    nextStep: "VERIFY_OTP",
+    otpReferenceId,
+  };
+};
+
+/**
+ * Email Address Verification
+ * @param {string} emailAddress
+ */
+exports.verifyEmailAddress = async (emailAddress) => {
+  // 1. Check if already registered
+  const existingUser = await prisma.pax.findFirst({
+    where: { email: emailAddress },
+  });
+
+  if (existingUser) {
+    return {
+      emailAddress,
+      isValid: true,
+      isRegistered: true,
+      otpRequired: false,
+      nextStep: "LOGIN",
+      alreadyRegistered: true // internal flag for controller
+    };
+  }
+
+  // 2. Generate OTP if not registered
+  const otp = "123456"; 
+  const otpReferenceId = "EMAILOTP" + Math.random().toString(36).substr(2, 6).toUpperCase();
+  
+  // Store OTP in memory
+  const key = `EMAIL_${emailAddress}`;
+  otpStore.set(key, {
+    otp,
+    otpReferenceId,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+  });
+
+  console.log(`Email OTP for ${emailAddress}: ${otp} (Ref: ${otpReferenceId})`);
+
+  return {
+    emailAddress,
+    isValid: true,
+    isRegistered: false,
+    otpRequired: true,
+    nextStep: "VERIFY_OTP",
+    otpReferenceId,
+  };
+};
+
+/**
+ * Verify Mobile OTP for Onboarding
+ * @param {Object} data 
+ */
+exports.verifyMobileOtp = async (data) => {
+  const { mobileNumber, otp } = data;
+  const key = `MOBILE_${mobileNumber}`;
+  
+  const stored = otpStore.get(key);
+
+  if (!stored) {
+    throw { 
+      name: "ValidationError",
+      message: "OTP not found or already verified", 
+      statusCode: 400, 
+      errors: [{ field: "otp", message: "OTP not found or already verified" }]
+    };
+  }
+
+  if (stored.expiresAt < Date.now()) {
+    otpStore.delete(key);
+    throw { 
+      name: "ValidationError",
+      message: "OTP has expired", 
+      statusCode: 410, 
+      errors: [{ field: "otp", message: "Please request a new OTP" }]
+    };
+  }
+
+  if (stored.otp !== otp) {
+    throw { 
+      name: "ValidationError",
+      message: "Invalid OTP", 
+      statusCode: 400, 
+      errors: [{ field: "otp", message: "The OTP entered is incorrect" }]
+    };
+  }
+
+  otpStore.delete(key);
+
+  return {
+    mobileNumber,
+    isOtpValid: true,
+    isVerified: true,
+    nextStep: "COMPLETE_REGISTRATION",
+  };
+};
+
+/**
+ * Verify Email OTP for Onboarding
+ * @param {Object} data 
+ */
+exports.verifyEmailOtp = async (data) => {
+  const { emailAddress, otp } = data;
+  const key = `EMAIL_${emailAddress}`;
+  
+  const stored = otpStore.get(key);
+
+  if (!stored) {
+    throw { 
+      name: "ValidationError",
+      message: "OTP not found or already verified", 
+      statusCode: 400, 
+      errors: [{ field: "otp", message: "OTP not found or already verified" }]
+    };
+  }
+
+  if (stored.expiresAt < Date.now()) {
+    otpStore.delete(key);
+    throw { 
+      name: "ValidationError",
+      message: "OTP has expired", 
+      statusCode: 410, 
+      errors: [{ field: "otp", message: "Please request a new OTP" }]
+    };
+  }
+
+  if (stored.otp !== otp) {
+    throw { 
+      name: "ValidationError",
+      message: "Invalid OTP", 
+      statusCode: 400, 
+      errors: [{ field: "otp", message: "The OTP entered is incorrect" }]
+    };
+  }
+
+  otpStore.delete(key);
+
+  return {
+    emailAddress,
+    isOtpValid: true,
+    isVerified: true,
+    nextStep: "COMPLETE_REGISTRATION",
   };
 };

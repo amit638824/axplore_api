@@ -5,11 +5,13 @@ const mobileAuthRoutes = require("./auth/auth.routes");
 const userAuthRoutes = require("./user/user");
 const faqRoutes = require("./faq/faq")
 const tripRoutes = require("./user/trip/trip.routes")
+const sosRoutes = require("./sos/sos.routes");
 
 // mobile APIs
 router.use("/auth", mobileAuthRoutes);
 router.use("/user", userAuthRoutes);
 router.use("/faq", faqRoutes);
 router.use("/trips", tripRoutes);
+router.use("/sos", sosRoutes);
 
 module.exports = router;

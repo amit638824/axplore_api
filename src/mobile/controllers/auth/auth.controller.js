@@ -169,3 +169,77 @@ exports.removeFace = asyncHandler(async (req, res) => {
 
   return success(res, result, "Face removed successfully");
 });
+
+exports.registration = asyncHandler(async (req, res) => {
+  const data = await service.registerUser(req.body);
+  return res.status(201).json({
+    success: true,
+    statusCode: 201,
+    message: "User registered successfully",
+    data
+  });
+});
+
+exports.verifyMobile = asyncHandler(async (req, res) => {
+  const { mobileNumber } = req.body;
+  const result = await service.verifyMobileNumber(mobileNumber);
+
+  if (result.alreadyRegistered) {
+    return res.status(409).json({
+      success: false,
+      statusCode: 409,
+      message: "Mobile number is already registered",
+      data: result
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    statusCode: 200,
+    message: "OTP sent successfully to mobile number",
+    data: result
+  });
+});
+
+exports.verifyEmail = asyncHandler(async (req, res) => {
+  const { emailAddress } = req.body;
+  const result = await service.verifyEmailAddress(emailAddress);
+
+  if (result.alreadyRegistered) {
+    return res.status(409).json({
+      success: false,
+      statusCode: 409,
+      message: "Email address is already registered",
+      data: result
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    statusCode: 200,
+    message: "OTP sent successfully to email address",
+    data: result
+  });
+});
+
+exports.verifyMobileOtp = asyncHandler(async (req, res) => {
+  const result = await service.verifyMobileOtp(req.body);
+
+  return res.status(200).json({
+    success: true,
+    statusCode: 200,
+    message: "OTP verified successfully",
+    data: result
+  });
+});
+
+exports.verifyEmailOtp = asyncHandler(async (req, res) => {
+  const result = await service.verifyEmailOtp(req.body);
+
+  return res.status(200).json({
+    success: true,
+    statusCode: 200,
+    message: "Email OTP verified successfully",
+    data: result
+  });
+});
