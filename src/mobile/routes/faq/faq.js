@@ -5,6 +5,6 @@ const { paxAuth } = require("../../middleware/paxAuth.js");
 
 
 // PROFILE
-router.get("/get", paxAuth, controller.faq);
+router.get("/list", paxAuth, controller.faq);
 
 module.exports = router;

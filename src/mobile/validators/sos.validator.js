@@ -6,10 +6,19 @@ const Joi = require('joi');
 const triggerSosSchema = Joi.object({
   paxId: Joi.string()
     .uuid()
-    .required()
+    .optional()
+    .allow(null, '')
     .messages({
       'string.guid': 'paxId must be a valid UUID',
-      'any.required': 'paxId is required',
+    }),
+
+
+  tripId: Joi.string()
+    .uuid()
+    .optional()
+    .allow(null, '')
+    .messages({
+      'string.guid': 'tripId must be a valid UUID',
     }),
     
   mobileNumber: Joi.string()
@@ -37,7 +46,15 @@ const triggerSosSchema = Joi.object({
     .max(255)
     .optional()
     .allow(null, ''),
+
+  typeofemergency: Joi.string()
+    .required()
+    .messages({
+      'any.required': 'typeofemergency is required',
+    }),
+
 });
+
 
 module.exports = {
   triggerSosSchema,

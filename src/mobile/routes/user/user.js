@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const controller = require("../../controllers/user/user.controller.js");
+const dependentController = require("../../controllers/user/dependent.controller.js");
+
 const { paxAuth } = require("../../middleware/paxAuth.js");
 const upload = require("../../middleware/upload.js");
 
@@ -29,5 +31,9 @@ router.delete("/emergency-contacts/:id", paxAuth, controller.deleteEmergencyCont
 
 // SOS
 router.post("/sos", paxAuth, controller.sosAlert);
+
+// FAMILY MEMBERS
+router.post("/family-members", paxAuth, dependentController.addFamilyDetails);
+
 
 module.exports = router;

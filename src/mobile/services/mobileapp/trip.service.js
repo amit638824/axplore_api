@@ -75,9 +75,20 @@ exports.getMyTrips = async (paxId, query) => {
             pax_id: paxId
           },
           select: {
+            trip_pax_id: true,
             booking_status: true,
             response_status: true,
-            joined_via: true
+            joined_via: true,
+            trip_pax_document: {
+              select: {
+                verification_status: true,
+                master_document: {
+                  select: {
+                    document_name: true
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -85,10 +96,44 @@ exports.getMyTrips = async (paxId, query) => {
     prisma.trip.count({ where })
   ]);
 
-  const data = trips.map(({ trip_pax, ...trip }) => ({
-    ...trip,
-    user_status: trip_pax?.[0] || null
-  }));
+  // Fetch destination images for cities
+  const cityNames = [...new Set(trips.map(t => t.destination_city).filter(Boolean))];
+  const cityImages = await prisma.masterCity.findMany({
+    where: {
+      name: { in: cityNames }
+    },
+    select: {
+      name: true,
+      city_image: true
+    }
+  });
+
+  const cityImageMap = cityImages.reduce((acc, city) => {
+    acc[city.name] = city.city_image;
+    return acc;
+  }, {});
+
+  const data = trips.map(({ trip_pax, ...trip }) => {
+    const userStatus = trip_pax?.[0] || null;
+    const documents = userStatus?.trip_pax_document || [];
+
+    // Logistic status calculation
+    const visaDoc = documents.find(d => 
+      d.master_document.document_name.toLowerCase().includes('visa')
+    );
+    const ticketDoc = documents.find(d => 
+      d.master_document.document_name.toLowerCase().includes('ticket')
+    );
+
+    return {
+      ...trip,
+      destination_image_url: cityImageMap[trip.destination_city] || null,
+      visa_status: visaDoc ? visaDoc.verification_status : 'NOT_SUBMITTED',
+      ticket_status: ticketDoc ? ticketDoc.verification_status : 'NOT_ISSUED',
+      profile_status: 'INCOMPLETE', // Placeholder logic
+      user_status: userStatus
+    };
+  });
 
   return {
     data,
@@ -100,6 +145,7 @@ exports.getMyTrips = async (paxId, query) => {
     }
   };
 };
+
 
 exports.getTripById = async (paxId, tripId) => {
   if (!paxId) {
@@ -420,3 +466,154 @@ exports.joinTrip = async (paxId, appUserId, data) => {
     user_status: tripPax,
   };
 };
+
+exports.getStatusTracker = async (paxId, tripId) => {
+  if (!paxId || !tripId) {
+    throw new Error("Pax ID and Trip ID are required");
+  }
+
+  const tripPax = await prisma.trip_pax.findFirst({
+    where: { pax_id: paxId, trip_id: tripId },
+    include: {
+      pax: true,
+      trip_pax_document: {
+        include: { master_document: true }
+      }
+    }
+  });
+
+  if (!tripPax) {
+    throw new Error("Trip participation not found");
+  }
+
+  const docs = tripPax.trip_pax_document;
+  
+  // Logic calculations
+  const passportDoc = docs.find(d => d.master_document.document_name.toLowerCase().includes('passport'));
+  const visaDoc = docs.find(d => d.master_document.document_name.toLowerCase().includes('visa'));
+  const ticketDoc = docs.find(d => d.master_document.document_name.toLowerCase().includes('ticket'));
+
+  return {
+    paxId,
+    tripId,
+    status_tracker: {
+      profile_completed: !!tripPax.pax.is_verified,
+      passport_verified: passportDoc ? passportDoc.verification_status === 'VERIFIED' : false,
+      visa_submitted: visaDoc ? visaDoc.is_submitted : false,
+      visa_approved: visaDoc ? visaDoc.verification_status === 'VERIFIED' : false,
+      in_progress: tripPax.booking_status === 'IN_PROGRESS',
+      tickets_issued: ticketDoc ? ticketDoc.verification_status === 'VERIFIED' : false,
+      ready_to_travel: tripPax.booking_status === 'CONFIRMED'
+    }
+  };
+};
+
+exports.updateTripUserDetails = async (paxId, tripId, userDetails) => {
+  try {
+    // 1. Update basic Pax info
+    const updatedPax = await prisma.pax.update({
+      where: { pax_id: paxId },
+      data: {
+        first_name: userDetails.firstName,
+        date_of_birth: userDetails.dob ? new Date(userDetails.dob.split('/').reverse().join('-')) : undefined,
+        gender: userDetails.gender,
+        current_address_line_1: userDetails.address,
+        current_city: userDetails.city,
+        current_state_name: userDetails.state,
+        current_postal_code: userDetails.pincode,
+        nationality_code: userDetails.country
+      }
+    });
+
+    // 2. Add or Update Emergency Contact for this Pax (simple version)
+    if (userDetails.contactName) {
+       const existingContact = await prisma.pax_emergency_contact.findFirst({
+         where: { pax_id: paxId }
+       });
+       
+       if (existingContact) {
+         await prisma.pax_emergency_contact.update({
+           where: { emergency_contact_id: existingContact.emergency_contact_id },
+           data: {
+             contact_name: userDetails.contactName,
+             relationship: userDetails.relationship,
+             mobile_no: userDetails.phoneNumber
+           }
+         });
+       } else {
+         await prisma.pax_emergency_contact.create({
+           data: {
+             pax_id: paxId,
+             contact_name: userDetails.contactName,
+             relationship: userDetails.relationship,
+             mobile_no: userDetails.phoneNumber
+           }
+         });
+       }
+    }
+
+    return {
+      tripId,
+      paxId,
+      ...userDetails,
+      createdAt: new Date()
+    };
+  } catch (error) {
+    throw error;
+  }
+};
+
+exports.uploadPaxDocument = async (paxId, tripId, documentType, fileUrl, scannedText) => {
+  try {
+    const tripPax = await prisma.trip_pax.findUnique({
+      where: {
+        trip_id_pax_id: {
+          trip_id: tripId,
+          pax_id: paxId
+        }
+      }
+    });
+
+    if (!tripPax) {
+      throw new Error("Trip participation not found");
+    }
+
+    // Find the master document ID for 'Passport' or specified type
+    const masterDoc = await prisma.master_document.findFirst({
+      where: {
+        document_code: {
+          contains: documentType.split('_')[0], // e.g., 'passport' from 'passport_front'
+          mode: 'insensitive'
+        }
+      }
+    });
+
+    const isPassportFront = documentType === 'passport_front';
+    
+    // Create or update the document record
+    const doc = await prisma.trip_pax_document.create({
+      data: {
+        trip_pax_id: tripPax.trip_pax_id,
+        document_id: masterDoc ? masterDoc.document_id : 'default-doc-uuid',
+        file_url: fileUrl,
+        file_name: isPassportFront ? 'Passport Front' : 'Passport Back',
+        document_value_json: scannedText,
+        is_submitted: true,
+        verification_status: 'PENDING'
+      }
+    });
+
+    return {
+      paxId,
+      tripId,
+      documentType,
+      imageUrl: fileUrl,
+      scannedText,
+      uploadedAt: new Date()
+    };
+  } catch (error) {
+    throw error;
+  }
+};
+
+

@@ -6,7 +6,13 @@ const { asyncHandler } = require("../../../middleware/errorHandler");
  */
 exports.triggerSos = asyncHandler(async (req, res) => {
   try {
+    // Inject paxId from token if not in body
+    if (!req.body.paxId && req.user) {
+      req.body.paxId = req.user.paxId || req.user.pax_id;
+    }
+    
     const data = await service.triggerSos(req.body);
+
     
     return res.status(201).json({
       status: true,
