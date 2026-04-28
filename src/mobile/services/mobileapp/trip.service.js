@@ -488,22 +488,18 @@ exports.getStatusTracker = async (paxId, tripId) => {
 
   const docs = tripPax.trip_pax_document;
   
-  // Logic calculations
-  const passportDoc = docs.find(d => d.master_document.document_name.toLowerCase().includes('passport'));
-  const visaDoc = docs.find(d => d.master_document.document_name.toLowerCase().includes('visa'));
-  const ticketDoc = docs.find(d => d.master_document.document_name.toLowerCase().includes('ticket'));
-
+  // NEW: Using the status columns from trip_pax table
   return {
     paxId,
     tripId,
     status_tracker: {
-      profile_completed: !!tripPax.pax.is_verified,
-      passport_verified: passportDoc ? passportDoc.verification_status === 'VERIFIED' : false,
-      visa_submitted: visaDoc ? visaDoc.is_submitted : false,
-      visa_approved: visaDoc ? visaDoc.verification_status === 'VERIFIED' : false,
-      in_progress: tripPax.booking_status === 'IN_PROGRESS',
-      tickets_issued: ticketDoc ? ticketDoc.verification_status === 'VERIFIED' : false,
-      ready_to_travel: tripPax.booking_status === 'CONFIRMED'
+      profile_completed: tripPax.profile_completed,
+      passport_verified: tripPax.passport_verified,
+      visa_submitted: tripPax.visa_submitted,
+      visa_approved: tripPax.visa_approved,
+      in_progress: tripPax.in_progress,
+      tickets_issued: tripPax.tickets_issued,
+      ready_to_travel: tripPax.ready_to_travel
     }
   };
 };
@@ -603,6 +599,21 @@ exports.uploadPaxDocument = async (paxId, tripId, documentType, fileUrl, scanned
       }
     });
 
+    // AUTO UPDATE STATUS TRACKER
+    const updatePayload = {};
+    const docNameLow = (masterDoc?.document_name || '').toLowerCase();
+    
+    if (docNameLow.includes('visa')) {
+      updatePayload.visa_submitted = true;
+    }
+
+    if (Object.keys(updatePayload).length > 0) {
+      await prisma.trip_pax.update({
+        where: { trip_pax_id: tripPax.trip_pax_id },
+        data: updatePayload
+      });
+    }
+
     return {
       paxId,
       tripId,
@@ -614,6 +625,192 @@ exports.uploadPaxDocument = async (paxId, tripId, documentType, fileUrl, scanned
   } catch (error) {
     throw error;
   }
+};
+
+exports.getFlightDetails = async (paxId, tripId) => {
+  const flight = await prisma.trip_flight.findFirst({
+    where: { trip_id: tripId }
+  });
+
+  if (!flight) throw new NotFoundError("Flight details");
+
+  return {
+    flight: {
+      airline: flight.airline,
+      flightNumber: flight.flight_number
+    },
+    departure: {
+      time: flight.departure_time,
+      date: flight.departure_date,
+      airport: {
+        name: flight.departure_airport_name,
+        code: flight.departure_airport_code,
+        terminal: flight.departure_terminal
+      }
+    },
+    duration: flight.duration,
+    arrival: {
+      time: flight.arrival_time,
+      date: flight.arrival_date,
+      airport: {
+        name: flight.arrival_airport_name,
+        code: flight.arrival_airport_code,
+        terminal: flight.arrival_terminal
+      }
+    },
+    bookingInfo: {
+      bookingReference: flight.booking_reference,
+      class: flight.class,
+      baggage: flight.baggage
+    }
+  };
+};
+
+exports.getHotelDetails = async (paxId, tripId) => {
+  const hotel = await prisma.trip_hotel.findFirst({
+    where: { trip_id: tripId }
+  });
+
+  if (!hotel) throw new NotFoundError("Hotel details");
+
+  return {
+    hotel: {
+      name: hotel.hotel_name,
+      address: hotel.address
+    },
+    stayDetails: {
+      checkIn: {
+        date: hotel.check_in_date,
+        time: hotel.check_in_time
+      },
+      checkOut: {
+        date: hotel.check_out_date,
+        time: hotel.check_out_time
+      },
+      numberOfNights: hotel.number_of_nights,
+      roomType: hotel.room_type,
+      guests: hotel.guests_count
+    },
+    bookingInfo: {
+      bookingReference: hotel.booking_reference
+    },
+    contactInformation: {
+      phone: hotel.phone,
+      email: hotel.email
+    }
+  };
+};
+
+exports.getItinerary = async (paxId, tripId) => {
+  const items = await prisma.trip_itinerary.findMany({
+    where: { trip_id: tripId },
+    orderBy: [
+      { day_number: 'asc' },
+      { activity_time: 'asc' }
+    ]
+  });
+
+  // Group by day
+  const days = [];
+  items.forEach(item => {
+    let day = days.find(d => d.day === item.day_number);
+    if (!day) {
+      day = {
+        day: item.day_number,
+        date: item.date,
+        totalActivities: 0,
+        activities: []
+      };
+      days.push(day);
+    }
+    day.activities.push({
+      time: item.activity_time,
+      title: item.title,
+      location: item.location,
+      description: item.description
+    });
+    day.totalActivities++;
+  });
+
+  return {
+    tripId,
+    paxId,
+    itinerary: days
+  };
+};
+
+exports.getAdditionalDocuments = async (paxId, tripId) => {
+  const tripPax = await prisma.trip_pax.findUnique({
+    where: { trip_id_pax_id: { trip_id: tripId, pax_id: paxId } }
+  });
+
+  if (!tripPax) throw new NotFoundError("Trip participation");
+
+  const docs = await prisma.trip_pax_document.findMany({
+    where: { trip_pax_id: tripPax.trip_pax_id },
+    include: { master_document: true }
+  });
+
+  return {
+    paxId,
+    tripId,
+    documents: docs.map(d => ({
+      documentType: d.master_document.document_code,
+      documentName: d.master_document.document_name,
+      status: d.verification_status,
+      uploaded: d.is_submitted,
+      uploadedAt: d.created_at,
+      fileUrl: d.file_url,
+      remarks: d.remarks
+    }))
+  };
+};
+
+exports.getDownloadableFiles = async (paxId, tripId) => {
+  const tripPax = await prisma.trip_pax.findUnique({
+    where: { trip_id_pax_id: { trip_id: tripId, pax_id: paxId } }
+  });
+
+  if (!tripPax) throw new NotFoundError("Trip participation");
+
+  const docs = await prisma.trip_pax_document.findMany({
+    where: { 
+      trip_pax_id: tripPax.trip_pax_id,
+      is_submitted: true,
+      verification_status: 'VERIFIED' // Only verified docs usually downloadable
+    }
+  });
+
+  return {
+    paxId,
+    tripId,
+    totalFiles: docs.length,
+    downloadAllUrl: null, // Placeholder
+    documents: docs.map(d => ({
+      documentId: d.trip_pax_document_id,
+      title: d.file_name,
+      type: 'PDF',
+      fileFormat: 'PDF',
+      fileSize: 'N/A',
+      uploadedDate: d.created_at,
+      fileUrl: d.file_url
+    }))
+  };
+};
+
+exports.getTripQRCode = async (paxId, tripId) => {
+  const tripPax = await prisma.trip_pax.findUnique({
+    where: { trip_id_pax_id: { trip_id: tripId, pax_id: paxId } }
+  });
+
+  if (!tripPax) throw new NotFoundError("Trip participation");
+
+  return {
+    paxId,
+    tripId,
+    qrCodeUrl: tripPax.qr_code || "https://placeholder-qr-link.com",
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+  };
 };
 
 

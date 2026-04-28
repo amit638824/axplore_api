@@ -110,4 +110,70 @@ exports.uploadPassport = async (req, res, next) => {
   }
 };
 
+exports.getFlightDetails = async (req, res, next) => {
+  try {
+    const paxId = req.user.pax_id;
+    const { tripId } = req.body;
+    const result = await tripService.getFlightDetails(paxId, tripId);
+    return success(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getHotelDetails = async (req, res, next) => {
+  try {
+    const paxId = req.user.pax_id;
+    const { tripId } = req.body;
+    const result = await tripService.getHotelDetails(paxId, tripId);
+    return success(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getItinerary = async (req, res, next) => {
+  try {
+    const paxId = req.user.pax_id;
+    const { tripId } = req.body;
+    const result = await tripService.getItinerary(paxId, tripId);
+    return success(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getAdditionalDocuments = async (req, res, next) => {
+  try {
+    const paxId = req.user.pax_id;
+    const { tripId } = req.body;
+    const result = await tripService.getAdditionalDocuments(paxId, tripId);
+    return success(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getDownloadableFiles = async (req, res, next) => {
+  try {
+    const paxId = req.user.pax_id;
+    const { tripId } = req.body;
+    const result = await tripService.getDownloadableFiles(paxId, tripId);
+    return success(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.getTripQRCode = async (req, res, next) => {
+  try {
+    const paxId = req.user.pax_id;
+    const { tripId } = req.body;
+    const result = await tripService.getTripQRCode(paxId, tripId);
+    return success(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
 

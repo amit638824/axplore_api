@@ -5,18 +5,36 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = "postgresql://postgres:12345@localhost:5432/axplore_arun?schema=public"
+  url      = env("DATABASE_URL")
 }
 
 model MasterCountry {
-  countryId    String                        @id @default(dbgenerated("uuid_generate_v4()")) @map("country_id") @db.Uuid
-  name         String                        @unique @map("name") @db.VarChar(100)
-  isoCode      String?                       @map("iso_code") @db.VarChar(10)
-  subDivisions CorporateSubDivisionAddress[]
-  leadFrom     LeadDestination[]             @relation("LeadFromCountry")
-  leadTo       LeadDestination[]             @relation("LeadToCountry")
-  states       MasterState[]
-  branches     TravelAgencyBranch[]
+  countryId           String                        @id @default(dbgenerated("uuid_generate_v4()")) @map("country_id") @db.Uuid
+  name                String                        @unique @map("name") @db.VarChar(100)
+  isoCode             String?                       @map("iso_code") @db.VarChar(10)
+  region              String?                       @db.VarChar(50)
+  sub_region          String?                       @db.VarChar(100)
+  iso3                String?                       @db.Char(3)
+  dial_code           String?                       @db.VarChar(10)
+  currency_code       String?                       @db.Char(500)
+  currency_symbol     String?                       @db.VarChar(10)
+  time_zone           String?                       @db.VarChar(50)
+  is_active           Boolean                       @default(true)
+  created_at          DateTime?                     @default(now()) @db.Timestamp(6)
+  created_by          String?                       @db.Uuid
+  modified_at         DateTime?                     @db.Timestamp(6)
+  modified_by         String?                       @db.Uuid
+  website             String?                       @db.VarChar(300)
+  language            String?                       @db.VarChar(500)
+  country_description String?
+  places_to_visit     String?
+  subDivisions        CorporateSubDivisionAddress[]
+  leadFrom            LeadDestination[]             @relation("LeadFromCountry")
+  leadTo              LeadDestination[]             @relation("LeadToCountry")
+  master_city         MasterCity[]
+  states              MasterState[]
+  master_vendor       master_vendor[]
+  branches            TravelAgencyBranch[]
 
   @@map("master_country")
 }
@@ -35,27 +53,39 @@ model MasterState {
 }
 
 model MasterCity {
-  cityId            String                        @id @default(dbgenerated("uuid_generate_v4()")) @map("city_id") @db.Uuid
-  stateId           String                        @map("state_id") @db.Uuid
-  name              String                        @map("name") @db.VarChar(100)
-  city_image        String?
-  subDivisions      CorporateSubDivisionAddress[]
-  leadFrom          LeadDestination[]             @relation("LeadFromCity")
-  leadTo            LeadDestination[]             @relation("LeadToCity")
-  state             MasterState                   @relation(fields: [stateId], references: [stateId], onDelete: NoAction, onUpdate: NoAction, map: "fk_city_state")
-  master_pickup_hub master_pickup_hub[]
-  branches          TravelAgencyBranch[]
+  cityId                                                String                        @id @default(dbgenerated("uuid_generate_v4()")) @map("city_id") @db.Uuid
+  stateId                                               String?                       @map("state_id") @db.Uuid
+  name                                                  String                        @map("name") @db.VarChar(100)
+  country_id                                            String?                       @db.Uuid
+  timezone                                              String?                       @db.VarChar(100)
+  timezone_gmt                                          String?                       @db.VarChar(10)
+  city_image                                            String?
+  city_description                                      String?
+  subDivisions                                          CorporateSubDivisionAddress[]
+  flight_sector_flight_sector_from_city_idTomaster_city flight_sector[]               @relation("flight_sector_from_city_idTomaster_city")
+  flight_sector_flight_sector_to_city_idTomaster_city   flight_sector[]               @relation("flight_sector_to_city_idTomaster_city")
+  leadFrom                                              LeadDestination[]             @relation("LeadFromCity")
+  leadTo                                                LeadDestination[]             @relation("LeadToCity")
+  master_country                                        MasterCountry?                @relation(fields: [country_id], references: [countryId], onDelete: NoAction, onUpdate: NoAction, map: "fk_city_country")
+  state                                                 MasterState?                  @relation(fields: [stateId], references: [stateId], onDelete: NoAction, onUpdate: NoAction, map: "fk_city_state")
+  master_pickup_hub                                     master_pickup_hub[]
+  master_vendor                                         master_vendor[]
+  ops_hotel_booking                                     ops_hotel_booking[]
+  ops_itinerary                                         ops_itinerary[]
+  branches                                              TravelAgencyBranch[]
 
-  @@unique([stateId, name])
+  @@index([country_id], map: "idx_city_country")
+  @@index([stateId], map: "idx_city_state")
   @@map("master_city")
 }
 
 model MasterDesignation {
-  designationId   String    @id @default(dbgenerated("uuid_generate_v4()")) @map("designation_id") @db.Uuid
-  designationCode String    @unique @map("designation_code") @db.VarChar(50)
-  designationName String    @map("designation_name") @db.VarChar(150)
-  isActive        Boolean?  @default(true) @map("is_active")
-  users           AppUser[]
+  designationId          String                   @id @default(dbgenerated("uuid_generate_v4()")) @map("designation_id") @db.Uuid
+  designationCode        String                   @unique @map("designation_code") @db.VarChar(50)
+  designationName        String                   @map("designation_name") @db.VarChar(150)
+  isActive               Boolean?                 @default(true) @map("is_active")
+  users                  AppUser[]
+  user_data_access_scope user_data_access_scope[]
 
   @@map("master_designation")
 }
@@ -94,6 +124,7 @@ model MasterServiceCategory {
   displayOrder      Int?                @map("display_order")
   isActive          Boolean?            @default(true) @map("is_active")
   createdAt         DateTime?           @default(now()) @map("created_at") @db.Timestamp(6)
+  lead_service      lead_service[]
   serviceTypes      MasterServiceType[]
 
   @@map("master_service_category")
@@ -108,6 +139,7 @@ model MasterServiceType {
   displayOrder      Int?                  @map("display_order")
   isActive          Boolean?              @default(true) @map("is_active")
   createdAt         DateTime?             @default(now()) @map("created_at") @db.Timestamp(6)
+  lead_service      lead_service[]
   category          MasterServiceCategory @relation(fields: [serviceCategoryId], references: [serviceCategoryId], onDelete: Cascade, onUpdate: NoAction, map: "fk_service_type_category")
 
   @@unique([serviceCategoryId, serviceTypeCode], map: "uq_service_type_code")
@@ -146,23 +178,24 @@ model TravelAgency {
 }
 
 model TravelAgencyBranch {
-  branchId       String        @id @default(dbgenerated("uuid_generate_v4()")) @map("branch_id") @db.Uuid
-  travelAgencyId String        @map("travel_agency_id") @db.Uuid
-  branchName     String        @map("branch_name") @db.VarChar(150)
-  branchCode     String?       @map("branch_code") @db.VarChar(50)
-  phone          String?       @map("phone") @db.VarChar(50)
-  email          String?       @map("email") @db.VarChar(150)
-  countryId      String        @map("country_id") @db.Uuid
-  stateId        String        @map("state_id") @db.Uuid
-  cityId         String        @map("city_id") @db.Uuid
-  isActive       Boolean?      @default(true) @map("is_active")
-  createdAt      DateTime?     @default(now()) @map("created_at") @db.Timestamp(6)
-  app_user       AppUser[]
-  salesLeads     Lead[]        @relation("SalesBranch")
-  travelAgency   TravelAgency  @relation(fields: [travelAgencyId], references: [travelAgencyId], onDelete: Cascade, onUpdate: NoAction, map: "fk_branch_agency")
-  city           MasterCity    @relation(fields: [cityId], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_branch_city")
-  country        MasterCountry @relation(fields: [countryId], references: [countryId], onDelete: NoAction, onUpdate: NoAction, map: "fk_branch_country")
-  state          MasterState   @relation(fields: [stateId], references: [stateId], onDelete: NoAction, onUpdate: NoAction, map: "fk_branch_state")
+  branchId               String                   @id @default(dbgenerated("uuid_generate_v4()")) @map("branch_id") @db.Uuid
+  travelAgencyId         String                   @map("travel_agency_id") @db.Uuid
+  branchName             String                   @map("branch_name") @db.VarChar(150)
+  branchCode             String?                  @map("branch_code") @db.VarChar(50)
+  phone                  String?                  @map("phone") @db.VarChar(50)
+  email                  String?                  @map("email") @db.VarChar(150)
+  countryId              String                   @map("country_id") @db.Uuid
+  stateId                String                   @map("state_id") @db.Uuid
+  cityId                 String                   @map("city_id") @db.Uuid
+  isActive               Boolean?                 @default(true) @map("is_active")
+  createdAt              DateTime?                @default(now()) @map("created_at") @db.Timestamp(6)
+  app_user               AppUser[]
+  salesLeads             Lead[]                   @relation("SalesBranch")
+  travelAgency           TravelAgency             @relation(fields: [travelAgencyId], references: [travelAgencyId], onDelete: Cascade, onUpdate: NoAction, map: "fk_branch_agency")
+  city                   MasterCity               @relation(fields: [cityId], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_branch_city")
+  country                MasterCountry            @relation(fields: [countryId], references: [countryId], onDelete: NoAction, onUpdate: NoAction, map: "fk_branch_country")
+  state                  MasterState              @relation(fields: [stateId], references: [stateId], onDelete: NoAction, onUpdate: NoAction, map: "fk_branch_state")
+  user_data_access_scope user_data_access_scope[]
 
   @@unique([branchId, travelAgencyId], map: "uq_branch_agency_pair")
   @@unique([travelAgencyId, branchCode], map: "uq_branch_code_per_agency")
@@ -187,51 +220,111 @@ model TravelAgencySettings {
   isActive               Boolean?     @default(true) @map("is_active")
   createdAt              DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt              DateTime?    @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
-  s3_bucket_name         String?
-  s3_region              String?
-  s3_access_key_id       String?
+  storage_access_key     String?      @db.VarChar(500)
+  storage_secret_key     String?
+  storage_endpoint       String?      @db.VarChar(500)
+  s3_bucket_name         String?      @db.VarChar(255)
+  s3_region              String?      @db.VarChar(100)
+  s3_access_key_id       String?      @db.VarChar(255)
   s3_secret_access_key   String?
   s3_base_url            String?
+  base_url               String?
   travelAgency           TravelAgency @relation(fields: [travelAgencyId], references: [travelAgencyId], onDelete: Cascade, onUpdate: NoAction, map: "fk_agency_settings_agency")
 
   @@map("travel_agency_settings")
 }
 
 model AppUser {
-  userId                                                           String                 @id @default(dbgenerated("uuid_generate_v4()")) @map("user_id") @db.Uuid
-  travelAgencyId                                                   String                 @map("travel_agency_id") @db.Uuid
-  branchId                                                         String                 @map("branch_id") @db.Uuid
-  designationId                                                    String                 @map("designation_id") @db.Uuid
-  employeeCode                                                     String?                @map("employee_code") @db.VarChar(50)
-  firstName                                                        String?                @map("first_name") @db.VarChar(100)
-  lastName                                                         String?                @map("last_name") @db.VarChar(100)
-  email                                                            String?                @map("email") @db.VarChar(150)
-  mobile                                                           String?                @map("mobile") @db.VarChar(30)
-  isActive                                                         Boolean?               @default(true) @map("is_active")
-  createdAt                                                        DateTime?              @default(now()) @map("created_at") @db.Timestamp(6)
-  travelAgency                                                     TravelAgency           @relation(fields: [travelAgencyId], references: [travelAgencyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_agency")
-  travel_agency_branch                                             TravelAgencyBranch     @relation(fields: [branchId, travelAgencyId], references: [branchId, travelAgencyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_branch_and_agency")
-  designation                                                      MasterDesignation      @relation(fields: [designationId], references: [designationId], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_designation")
-  auth                                                             AppUserAuth?
-  loginSessions                                                    AppUserLoginSession[]
-  passwordResets                                                   AppUserPasswordReset[]
-  contractingLeads                                                 Lead[]                 @relation("ContractingHead")
-  createdLeads                                                     Lead[]                 @relation("CreatedBy")
-  modifiedLeads                                                    Lead[]                 @relation("ModifiedBy")
-  salesLeads                                                       Lead[]                 @relation("SalesUser")
-  lead_contracting_team_lead_contracting_team_created_byToapp_user LeadContractingTeam[]  @relation("lead_contracting_team_created_byToapp_user")
-  contractingTeamMembers                                           LeadContractingTeam[]
-  createdDestinations                                              LeadDestination[]      @relation("CreatedBy")
-  modifiedDestinations                                             LeadDestination[]      @relation("ModifiedBy")
-  createdPickups                                                   LeadPickupHub[]        @relation("CreatedBy")
-  modifiedPickups                                                  LeadPickupHub[]        @relation("ModifiedBy")
-  createdTripInfo                                                  LeadTripInfo[]         @relation("CreatedBy")
-  modifiedTripInfo                                                 LeadTripInfo[]         @relation("ModifiedBy")
-  userRoles                                                        UserRole[]
+  userId                                                                 String                    @id @default(dbgenerated("uuid_generate_v4()")) @map("user_id") @db.Uuid
+  travelAgencyId                                                         String                    @map("travel_agency_id") @db.Uuid
+  branchId                                                               String                    @map("branch_id") @db.Uuid
+  designationId                                                          String                    @map("designation_id") @db.Uuid
+  employeeCode                                                           String?                   @map("employee_code") @db.VarChar(50)
+  firstName                                                              String?                   @map("first_name") @db.VarChar(100)
+  lastName                                                               String?                   @map("last_name") @db.VarChar(100)
+  email                                                                  String?                   @map("email") @db.VarChar(150)
+  mobile                                                                 String?                   @map("mobile") @db.VarChar(30)
+  isActive                                                               Boolean?                  @default(true) @map("is_active")
+  createdAt                                                              DateTime?                 @default(now()) @map("created_at") @db.Timestamp(6)
+  primary_manager_user_id                                                String?                   @db.Uuid
+  modified_at                                                            DateTime?                 @db.Timestamp(6)
+  modified_by                                                            String?                   @db.Uuid
+  app_user_app_user_modified_byToapp_user                                AppUser?                  @relation("app_user_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_app_user_modified_by")
+  other_app_user_app_user_modified_byToapp_user                          AppUser[]                 @relation("app_user_modified_byToapp_user")
+  app_user_app_user_primary_manager_user_idToapp_user                    AppUser?                  @relation("app_user_primary_manager_user_idToapp_user", fields: [primary_manager_user_id], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_app_user_primary_manager")
+  other_app_user_app_user_primary_manager_user_idToapp_user              AppUser[]                 @relation("app_user_primary_manager_user_idToapp_user")
+  travelAgency                                                           TravelAgency              @relation(fields: [travelAgencyId], references: [travelAgencyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_agency")
+  travel_agency_branch                                                   TravelAgencyBranch        @relation(fields: [branchId, travelAgencyId], references: [branchId, travelAgencyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_branch_and_agency")
+  designation                                                            MasterDesignation         @relation(fields: [designationId], references: [designationId], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_designation")
+  auth                                                                   AppUserAuth?
+  loginSessions                                                          AppUserLoginSession[]
+  passwordResets                                                         AppUserPasswordReset[]
+  auth_face_profile_auth_face_profile_created_byToapp_user               auth_face_profile[]       @relation("auth_face_profile_created_byToapp_user")
+  auth_face_profile_auth_face_profile_modified_byToapp_user              auth_face_profile[]       @relation("auth_face_profile_modified_byToapp_user")
+  auth_user_auth_user_created_byToapp_user                               auth_user[]               @relation("auth_user_created_byToapp_user")
+  auth_user_auth_user_modified_byToapp_user                              auth_user[]               @relation("auth_user_modified_byToapp_user")
+  fonts_fonts_created_byToapp_user                                       fonts[]                   @relation("fonts_created_byToapp_user")
+  fonts_fonts_updated_byToapp_user                                       fonts[]                   @relation("fonts_updated_byToapp_user")
+  contractingLeads                                                       Lead[]                    @relation("ContractingHead")
+  createdLeads                                                           Lead[]                    @relation("CreatedBy")
+  modifiedLeads                                                          Lead[]                    @relation("ModifiedBy")
+  salesLeads                                                             Lead[]                    @relation("SalesUser")
+  lead_lead_ops_head_user_idToapp_user                                   Lead[]                    @relation("lead_ops_head_user_idToapp_user")
+  lead_activity_log                                                      lead_activity_log[]
+  lead_contracting_team_lead_contracting_team_created_byToapp_user       LeadContractingTeam[]     @relation("lead_contracting_team_created_byToapp_user")
+  contractingTeamMembers                                                 LeadContractingTeam[]
+  createdDestinations                                                    LeadDestination[]         @relation("CreatedBy")
+  modifiedDestinations                                                   LeadDestination[]         @relation("ModifiedBy")
+  lead_document_lead_document_created_byToapp_user                       lead_document[]           @relation("lead_document_created_byToapp_user")
+  lead_document_lead_document_modified_byToapp_user                      lead_document[]           @relation("lead_document_modified_byToapp_user")
+  createdPickups                                                         LeadPickupHub[]           @relation("CreatedBy")
+  modifiedPickups                                                        LeadPickupHub[]           @relation("ModifiedBy")
+  lead_proposals_lead_proposals_created_byToapp_user                     lead_proposals[]          @relation("lead_proposals_created_byToapp_user")
+  lead_proposals_lead_proposals_updated_byToapp_user                     lead_proposals[]          @relation("lead_proposals_updated_byToapp_user")
+  lead_service_lead_service_created_byToapp_user                         lead_service[]            @relation("lead_service_created_byToapp_user")
+  lead_service_lead_service_modified_byToapp_user                        lead_service[]            @relation("lead_service_modified_byToapp_user")
+  createdTripInfo                                                        LeadTripInfo[]            @relation("CreatedBy")
+  modifiedTripInfo                                                       LeadTripInfo[]            @relation("ModifiedBy")
+  master_document_master_document_created_byToapp_user                   master_document[]         @relation("master_document_created_byToapp_user")
+  master_document_master_document_modified_byToapp_user                  master_document[]         @relation("master_document_modified_byToapp_user")
+  master_trip_question_master_trip_question_created_byToapp_user         master_trip_question[]    @relation("master_trip_question_created_byToapp_user")
+  master_trip_question_master_trip_question_modified_byToapp_user        master_trip_question[]    @relation("master_trip_question_modified_byToapp_user")
+  ops_execution                                                          ops_execution[]
+  ops_task_instance                                                      ops_task_instance[]
+  pax_device_pax_device_created_byToapp_user                             pax_device[]              @relation("pax_device_created_byToapp_user")
+  pax_device_pax_device_modified_byToapp_user                            pax_device[]              @relation("pax_device_modified_byToapp_user")
+  pax_emergency_contact_pax_emergency_contact_created_byToapp_user       pax_emergency_contact[]   @relation("pax_emergency_contact_created_byToapp_user")
+  pax_emergency_contact_pax_emergency_contact_modified_byToapp_user      pax_emergency_contact[]   @relation("pax_emergency_contact_modified_byToapp_user")
+  pax_interaction_log                                                    pax_interaction_log[]
+  proposal_attachments                                                   proposal_attachments[]
+  proposal_template_media_proposal_template_media_created_byToapp_user   proposal_template_media[] @relation("proposal_template_media_created_byToapp_user")
+  proposal_template_media_proposal_template_media_updated_byToapp_user   proposal_template_media[] @relation("proposal_template_media_updated_byToapp_user")
+  proposal_templates_proposal_templates_created_byToapp_user             proposal_templates[]      @relation("proposal_templates_created_byToapp_user")
+  proposal_templates_proposal_templates_updated_byToapp_user             proposal_templates[]      @relation("proposal_templates_updated_byToapp_user")
+  trip_trip_created_byToapp_user                                         trip[]                    @relation("trip_created_byToapp_user")
+  trip_trip_modified_byToapp_user                                        trip[]                    @relation("trip_modified_byToapp_user")
+  trip_pax_trip_pax_added_byToapp_user                                   trip_pax[]                @relation("trip_pax_added_byToapp_user")
+  trip_pax_trip_pax_modified_byToapp_user                                trip_pax[]                @relation("trip_pax_modified_byToapp_user")
+  trip_pax_answer_trip_pax_answer_created_byToapp_user                   trip_pax_answer[]         @relation("trip_pax_answer_created_byToapp_user")
+  trip_pax_answer_trip_pax_answer_modified_byToapp_user                  trip_pax_answer[]         @relation("trip_pax_answer_modified_byToapp_user")
+  trip_pax_document_trip_pax_document_created_byToapp_user               trip_pax_document[]       @relation("trip_pax_document_created_byToapp_user")
+  trip_pax_document_trip_pax_document_modified_byToapp_user              trip_pax_document[]       @relation("trip_pax_document_modified_byToapp_user")
+  trip_pax_document_trip_pax_document_verified_byToapp_user              trip_pax_document[]       @relation("trip_pax_document_verified_byToapp_user")
+  trip_question_trip_question_created_byToapp_user                       trip_question[]           @relation("trip_question_created_byToapp_user")
+  trip_question_trip_question_modified_byToapp_user                      trip_question[]           @relation("trip_question_modified_byToapp_user")
+  trip_sos_group_member                                                  trip_sos_group_member[]
+  trip_sos_notification                                                  trip_sos_notification[]
+  user_data_access_scope_user_data_access_scope_created_byToapp_user     user_data_access_scope[]  @relation("user_data_access_scope_created_byToapp_user")
+  user_data_access_scope_user_data_access_scope_target_user_idToapp_user user_data_access_scope[]  @relation("user_data_access_scope_target_user_idToapp_user")
+  user_data_access_scope_user_data_access_scope_user_idToapp_user        user_data_access_scope[]  @relation("user_data_access_scope_user_idToapp_user")
+  user_notifications                                                     user_notifications[]
+  userRoles                                                              UserRole[]
 
   @@index([travelAgencyId], map: "idx_app_user_agency")
   @@index([branchId], map: "idx_app_user_branch")
   @@index([designationId], map: "idx_app_user_designation")
+  @@index([modified_by], map: "idx_app_user_modified_by")
+  @@index([primary_manager_user_id], map: "idx_app_user_primary_manager")
   @@map("app_user")
 }
 
@@ -293,6 +386,7 @@ model Role {
   roleName        String           @map("role_name") @db.VarChar(150)
   description     String?          @map("description")
   isActive        Boolean?         @default(true) @map("is_active")
+  hierarchy       Int?
   rolePermissions RolePermission[]
   userRoles       UserRole[]
 
@@ -364,15 +458,24 @@ model RolePermission {
 }
 
 model Corporate {
-  corporateId    String                   @id @default(dbgenerated("uuid_generate_v4()")) @map("corporate_id") @db.Uuid
-  corporateCode  String?                  @map("corporate_code") @db.VarChar(50)
-  corporateName  String                   @unique(map: "uq_corporate_name") @map("corporate_name") @db.VarChar(200)
-  websiteUrl     String?                  @map("website_url")
-  isActive       Boolean?                 @default(true) @map("is_active")
-  createdAt      DateTime?                @default(now()) @map("created_at") @db.Timestamp(6)
-  contactPersons CorporateContactPerson[]
-  divisions      CorporateDivision[]
-  leads          Lead[]
+  corporateId         String                   @id @default(dbgenerated("uuid_generate_v4()")) @map("corporate_id") @db.Uuid
+  corporateCode       String?                  @map("corporate_code") @db.VarChar(50)
+  corporateName       String                   @unique(map: "uq_corporate_name") @map("corporate_name") @db.VarChar(200)
+  websiteUrl          String?                  @map("website_url")
+  isActive            Boolean?                 @default(true) @map("is_active")
+  createdAt           DateTime?                @default(now()) @map("created_at") @db.Timestamp(6)
+  gstin               String?                  @db.VarChar(15)
+  pan                 String?                  @db.VarChar(10)
+  logo                String?                  @db.VarChar(500)
+  company_size        String?                  @db.VarChar(50)
+  company_vertical    String?                  @db.VarChar(100)
+  company_description String?
+  facebook_url        String?                  @db.VarChar(300)
+  linkedin_url        String?                  @db.VarChar(300)
+  twitter_url         String?                  @db.VarChar(300)
+  contactPersons      CorporateContactPerson[]
+  divisions           CorporateDivision[]
+  leads               Lead[]
 
   @@map("corporate")
 }
@@ -413,21 +516,26 @@ model CorporateSubDivision {
 }
 
 model CorporateSubDivisionAddress {
-  subDivisionAddressId String               @id @default(dbgenerated("uuid_generate_v4()")) @map("sub_division_address_id") @db.Uuid
-  subDivisionId        String               @map("sub_division_id") @db.Uuid
-  addressLine1         String               @map("address_line1")
-  addressLine2         String?              @map("address_line2")
-  cityId               String               @map("city_id") @db.Uuid
-  stateId              String               @map("state_id") @db.Uuid
-  countryId            String               @map("country_id") @db.Uuid
-  postalCode           String?              @map("postal_code") @db.VarChar(20)
-  isPrimary            Boolean?             @default(true) @map("is_primary")
-  createdAt            DateTime?            @default(now()) @map("created_at") @db.Timestamp(6)
-  city                 MasterCity           @relation(fields: [cityId], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_sub_div_addr_city")
-  country              MasterCountry        @relation(fields: [countryId], references: [countryId], onDelete: NoAction, onUpdate: NoAction, map: "fk_sub_div_addr_country")
-  state                MasterState          @relation(fields: [stateId], references: [stateId], onDelete: NoAction, onUpdate: NoAction, map: "fk_sub_div_addr_state")
-  subDivision          CorporateSubDivision @relation(fields: [subDivisionId], references: [subDivisionId], onDelete: Cascade, onUpdate: NoAction, map: "fk_sub_div_addr_sub_div")
+  subDivisionAddressId String                @id @default(dbgenerated("uuid_generate_v4()")) @map("sub_division_address_id") @db.Uuid
+  subDivisionId        String?               @map("sub_division_id") @db.Uuid
+  addressLine1         String                @map("address_line1")
+  addressLine2         String?               @map("address_line2")
+  cityId               String                @map("city_id") @db.Uuid
+  stateId              String                @map("state_id") @db.Uuid
+  countryId            String                @map("country_id") @db.Uuid
+  postalCode           String?               @map("postal_code") @db.VarChar(20)
+  isPrimary            Boolean?              @default(true) @map("is_primary")
+  createdAt            DateTime?             @default(now()) @map("created_at") @db.Timestamp(6)
+  is_active            Boolean               @default(true)
+  corporate_id         String?               @db.Uuid
+  division_id          String?               @db.Uuid
+  city                 MasterCity            @relation(fields: [cityId], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_sub_div_addr_city")
+  country              MasterCountry         @relation(fields: [countryId], references: [countryId], onDelete: NoAction, onUpdate: NoAction, map: "fk_sub_div_addr_country")
+  state                MasterState           @relation(fields: [stateId], references: [stateId], onDelete: NoAction, onUpdate: NoAction, map: "fk_sub_div_addr_state")
+  subDivision          CorporateSubDivision? @relation(fields: [subDivisionId], references: [subDivisionId], onDelete: Cascade, onUpdate: NoAction, map: "fk_sub_div_addr_sub_div")
 
+  @@index([corporate_id], map: "idx_sub_div_addr_corporate")
+  @@index([division_id], map: "idx_sub_div_addr_division")
   @@map("corporate_sub_division_address")
 }
 
@@ -446,6 +554,8 @@ model CorporateContactPerson {
   isPrimary       Boolean?              @default(false) @map("is_primary")
   isActive        Boolean?              @default(true) @map("is_active")
   createdAt       DateTime?             @default(now()) @map("created_at") @db.Timestamp(6)
+  gender          String?               @db.VarChar(10)
+  dob             DateTime?             @db.Date
   corporate       Corporate             @relation(fields: [corporateId], references: [corporateId], onDelete: Cascade, onUpdate: NoAction, map: "fk_contact_corporate")
   division        CorporateDivision?    @relation(fields: [divisionId], references: [divisionId], onUpdate: NoAction, map: "fk_contact_division")
   subDivision     CorporateSubDivision? @relation(fields: [subDivisionId], references: [subDivisionId], onUpdate: NoAction, map: "fk_contact_sub_division")
@@ -457,41 +567,57 @@ model CorporateContactPerson {
 }
 
 model Lead {
-  leadId                String                  @id @default(dbgenerated("uuid_generate_v4()")) @map("lead_id") @db.Uuid
-  leadSegmentId         String                  @map("lead_segment_id") @db.Uuid
-  corporateId           String                  @map("corporate_id") @db.Uuid
-  divisionId            String                  @map("division_id") @db.Uuid
-  subDivisionId         String                  @map("sub_division_id") @db.Uuid
-  contactPersonId       String?                 @map("contact_person_id") @db.Uuid
-  contactMobile         String?                 @map("contact_mobile") @db.VarChar(30)
-  contactEmail          String?                 @map("contact_email") @db.VarChar(150)
-  salesUserId           String                  @map("sales_user_id") @db.Uuid
-  salesBranchId         String                  @map("sales_branch_id") @db.Uuid
-  contractingHeadUserId String?                 @map("contracting_head_user_id") @db.Uuid
-  leadStatusId          String                  @map("lead_status_id") @db.Uuid
-  remarks               String?                 @map("remarks")
-  requirementNotes      String?                 @map("requirement_notes")
-  createdAt             DateTime                @default(now()) @map("created_at") @db.Timestamp(6)
-  createdBy             String                  @map("created_by") @db.Uuid
-  modifiedAt            DateTime?               @map("modified_at") @db.Timestamp(6)
-  modifiedBy            String?                 @map("modified_by") @db.Uuid
-  contactPerson         CorporateContactPerson? @relation(fields: [contactPersonId], references: [contactPersonId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_contact_person")
-  contractingHead       AppUser?                @relation("ContractingHead", fields: [contractingHeadUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_contracting_head")
-  corporate             Corporate               @relation(fields: [corporateId], references: [corporateId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_corporate")
-  creator               AppUser                 @relation("CreatedBy", fields: [createdBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_created_by")
-  division              CorporateDivision       @relation(fields: [divisionId], references: [divisionId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_division")
-  modifier              AppUser?                @relation("ModifiedBy", fields: [modifiedBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_modified_by")
-  salesBranch           TravelAgencyBranch      @relation("SalesBranch", fields: [salesBranchId], references: [branchId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_sales_branch")
-  salesUser             AppUser                 @relation("SalesUser", fields: [salesUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_sales_user")
-  leadSegment           MasterLeadSegment       @relation(fields: [leadSegmentId], references: [leadSegmentId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_segment")
-  leadStatus            MasterLeadStatus        @relation(fields: [leadStatusId], references: [leadStatusId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_status")
-  subDivision           CorporateSubDivision    @relation(fields: [subDivisionId], references: [subDivisionId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_sub_division")
-  contractingTeam       LeadContractingTeam[]
-  lead_costsheet        LeadCostsheet[]
-  destinations          LeadDestination[]
-  tripInfo              LeadTripInfo?
-  trip                  trip[]
+  leadId                                   String                  @id @default(dbgenerated("uuid_generate_v4()")) @map("lead_id") @db.Uuid
+  leadSegmentId                            String                  @map("lead_segment_id") @db.Uuid
+  corporateId                              String                  @map("corporate_id") @db.Uuid
+  divisionId                               String                  @map("division_id") @db.Uuid
+  subDivisionId                            String                  @map("sub_division_id") @db.Uuid
+  contactPersonId                          String?                 @map("contact_person_id") @db.Uuid
+  contactMobile                            String?                 @map("contact_mobile") @db.VarChar(30)
+  contactEmail                             String?                 @map("contact_email") @db.VarChar(150)
+  salesUserId                              String                  @map("sales_user_id") @db.Uuid
+  salesBranchId                            String                  @map("sales_branch_id") @db.Uuid
+  contractingHeadUserId                    String?                 @map("contracting_head_user_id") @db.Uuid
+  leadStatusId                             String                  @map("lead_status_id") @db.Uuid
+  remarks                                  String?                 @map("remarks")
+  requirementNotes                         String?                 @map("requirement_notes")
+  createdAt                                DateTime                @default(now()) @map("created_at") @db.Timestamp(6)
+  createdBy                                String                  @map("created_by") @db.Uuid
+  modifiedAt                               DateTime?               @map("modified_at") @db.Timestamp(6)
+  modifiedBy                               String?                 @map("modified_by") @db.Uuid
+  stage                                    String?                 @db.VarChar(20)
+  approved_amount                          Decimal?                @default(0.00) @db.Decimal(10, 2)
+  ops_head_user_id                         String?                 @db.Uuid
+  confirmation_date                        DateTime?               @db.Timestamp(6)
+  ops_remarks                              String?
+  is_confirmed                             Boolean?                @default(false)
+  lead_code                                String?                 @unique(map: "uq_lead_code") @db.VarChar(20)
+  is_active                                Boolean?                @default(true)
+  contactPerson                            CorporateContactPerson? @relation(fields: [contactPersonId], references: [contactPersonId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_contact_person")
+  contractingHead                          AppUser?                @relation("ContractingHead", fields: [contractingHeadUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_contracting_head")
+  corporate                                Corporate               @relation(fields: [corporateId], references: [corporateId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_corporate")
+  creator                                  AppUser                 @relation("CreatedBy", fields: [createdBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_created_by")
+  division                                 CorporateDivision       @relation(fields: [divisionId], references: [divisionId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_division")
+  modifier                                 AppUser?                @relation("ModifiedBy", fields: [modifiedBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_modified_by")
+  salesBranch                              TravelAgencyBranch      @relation("SalesBranch", fields: [salesBranchId], references: [branchId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_sales_branch")
+  salesUser                                AppUser                 @relation("SalesUser", fields: [salesUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_sales_user")
+  leadSegment                              MasterLeadSegment       @relation(fields: [leadSegmentId], references: [leadSegmentId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_segment")
+  leadStatus                               MasterLeadStatus        @relation(fields: [leadStatusId], references: [leadStatusId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_status")
+  subDivision                              CorporateSubDivision    @relation(fields: [subDivisionId], references: [subDivisionId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_sub_division")
+  app_user_lead_ops_head_user_idToapp_user AppUser?                @relation("lead_ops_head_user_idToapp_user", fields: [ops_head_user_id], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  lead_activity_log                        lead_activity_log[]
+  contractingTeam                          LeadContractingTeam[]
+  lead_costsheet                           LeadCostsheet[]
+  destinations                             LeadDestination[]
+  lead_document                            lead_document[]
+  lead_pickup_hub                          LeadPickupHub[]
+  lead_proposals                           lead_proposals[]
+  lead_service                             lead_service[]
+  tripInfo                                 LeadTripInfo?
+  ops_transport                            ops_transport[]
+  trip                                     trip?
 
+  @@index([ops_head_user_id], map: "idx_lead_ops_head")
   @@map("lead")
 }
 
@@ -518,12 +644,13 @@ model LeadDestination {
   toCountryId       String        @map("to_country_id") @db.Uuid
   toCityId          String        @map("to_city_id") @db.Uuid
   numberOfTravelers Int           @map("number_of_travelers")
-  travel_date       DateTime?     @db.Date
+  checkin_date      DateTime?     @db.Date
   isExtendedTrip    Boolean?      @default(false) @map("is_extended_trip")
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
   createdBy         String        @map("created_by") @db.Uuid
   modifiedAt        DateTime?     @map("modified_at") @db.Timestamp(6)
   modifiedBy        String?       @map("modified_by") @db.Uuid
+  checkout_date     DateTime?     @db.Date
   creator           AppUser       @relation("CreatedBy", fields: [createdBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_ld_created_by")
   fromCity          MasterCity    @relation("LeadFromCity", fields: [fromCityId], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_ld_from_city")
   fromCountry       MasterCountry @relation("LeadFromCountry", fields: [fromCountryId], references: [countryId], onDelete: NoAction, onUpdate: NoAction, map: "fk_ld_from_country")
@@ -537,21 +664,23 @@ model LeadDestination {
 }
 
 model LeadPickupHub {
-  lead_pickup_hub_id String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  leadId             String    @map("lead_id") @db.Uuid
-  pickup_hub_id      String    @db.Uuid
-  travellerCount     Int       @map("traveller_count")
-  remarks            String?   @map("remarks")
-  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
-  createdBy          String    @map("created_by") @db.Uuid
-  modifiedAt         DateTime? @map("modified_at") @db.Timestamp(6)
-  modifiedBy         String?   @map("modified_by") @db.Uuid
-  creator            AppUser   @relation("CreatedBy", fields: [createdBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_hub_created_by")
-  modifier           AppUser?  @relation("ModifiedBy", fields: [modifiedBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_hub_modified_by")
+  lead_hub_id       String            @id(map: "lead_hub_pkey") @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  leadId            String            @map("lead_id") @db.Uuid
+  hub_id            String            @db.Uuid
+  travellerCount    Int?              @default(0) @map("traveller_count")
+  remarks           String?           @map("remarks")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamp(6)
+  createdBy         String            @map("created_by") @db.Uuid
+  modifiedAt        DateTime?         @map("modified_at") @db.Timestamp(6)
+  modifiedBy        String?           @map("modified_by") @db.Uuid
+  option_no         Int?
+  is_active         Boolean?          @default(true)
+  creator           AppUser           @relation("CreatedBy", fields: [createdBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_hub_created_by")
+  master_pickup_hub master_pickup_hub @relation(fields: [hub_id], references: [hub_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_hub_hub")
+  lead              Lead              @relation(fields: [leadId], references: [leadId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_hub_lead")
+  modifier          AppUser?          @relation("ModifiedBy", fields: [modifiedBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_hub_modified_by")
 
-  @@unique([leadId, pickup_hub_id], map: "uq_lead_pickup_hub")
-  @@index([pickup_hub_id], map: "idx_lead_pickup_hub_hub")
-  @@index([leadId], map: "idx_lead_pickup_hub_lead")
+  @@unique([leadId, hub_id], map: "uq_lead_hub")
   @@map("lead_pickup_hub")
 }
 
@@ -615,10 +744,15 @@ model LeadCostsheet {
   createdBy           String            @map("created_by") @db.Uuid
   modifiedAt          DateTime?         @map("modified_at") @db.Timestamp(6)
   modifiedBy          String?           @map("modified_by") @db.Uuid
+  cost_sheet_type     String?           @db.VarChar(20)
+  uploaded_file_path  String?
+  gop_person          Decimal?          @db.Decimal(18, 2)
+  margin              Boolean?          @default(false)
+  is_active           Boolean?          @default(true)
+  type                String?           @default("adult") @db.VarChar(20)
   lead                Lead              @relation(fields: [leadId], references: [leadId], onDelete: Cascade, onUpdate: NoAction, map: "fk_costsheet_lead")
   costsheet_template  CostsheetTemplate @relation(fields: [costsheetTemplateId], references: [costsheetTemplateId], onDelete: NoAction, onUpdate: NoAction, map: "fk_costsheet_template")
 
-  @@unique([leadId, optionNo], map: "uq_costsheet_option")
   @@index([leadId, optionNo], map: "idx_lead_costsheet_option")
   @@map("lead_costsheet")
 }
@@ -632,21 +766,26 @@ model master_currency {
 }
 
 model master_pickup_hub {
-  pickup_hub_id String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  hub_code      String?     @db.VarChar(50)
-  hub_name      String      @db.VarChar(200)
-  city_id       String?     @db.Uuid
-  state_id      String?     @db.Uuid
-  country_id    String?     @db.Uuid
-  description   String?
-  is_active     Boolean?    @default(true)
-  created_at    DateTime    @default(now()) @db.Timestamp(6)
-  created_by    String      @db.Uuid
-  modified_at   DateTime?   @db.Timestamp(6)
-  modified_by   String?     @db.Uuid
-  master_city   MasterCity? @relation(fields: [city_id], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_hub_city")
-
-  @@unique([hub_name, city_id], map: "uq_pickup_hub_name_city")
+  hub_id           String          @id(map: "master_hub_pkey") @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  city_id          String          @db.Uuid
+  hub_code_iata    String          @unique(map: "uq_hub_code") @db.VarChar(3)
+  hub_code_icao    String?         @db.VarChar(4)
+  hub_name         String          @db.VarChar(150)
+  hub_type         String?         @default("AIRPORT") @db.VarChar(30)
+  airport_category String?         @default("INTERNATIONAL") @db.VarChar(20)
+  terminal_count   Int?
+  timezone         String?         @db.VarChar(50)
+  latitude         Decimal?        @db.Decimal(10, 6)
+  longitude        Decimal?        @db.Decimal(10, 6)
+  is_default       Boolean?        @default(false)
+  is_active        Boolean?        @default(true)
+  created_at       DateTime?       @default(now()) @db.Timestamp(6)
+  created_by       String?         @db.Uuid
+  modified_at      DateTime?       @db.Timestamp(6)
+  modified_by      String?         @db.Uuid
+  lead_pickup_hub  LeadPickupHub[]
+  master_city      MasterCity      @relation(fields: [city_id], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_hub_city")
+  trip_pax         trip_pax[]
 }
 
 model pax_sos {
@@ -661,9 +800,9 @@ model pax_sos {
   emergency_type String?   @db.VarChar(50)
   status         String?   @default("TRIGGERED") @db.VarChar(20)
   created_at     DateTime? @default(now()) @db.Timestamp(6)
+  pax            pax       @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_pax_sos_pax")
+  trip           trip?     @relation(fields: [trip_id], references: [trip_id], onUpdate: NoAction, map: "fk_pax_sos_trip")
 
-  @@index([pax_id], map: "idx_pax_sos_pax_id")
-  @@index([trip_id], map: "idx_pax_sos_trip_id")
   @@map("pax_sos")
 }
 
@@ -675,8 +814,8 @@ model pax_notifications {
   is_read         Boolean?  @default(false)
   read_at         DateTime? @db.Timestamp(6)
   created_at      DateTime? @default(now()) @db.Timestamp(6)
+  pax             pax       @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_pax_notif_pax")
 
-  @@index([pax_id], map: "idx_pax_notifications_pax_id")
   @@map("pax_notifications")
 }
 
@@ -695,207 +834,1101 @@ model pax_dependents {
   guardian_name    String?   @db.VarChar(150)
   guardian_contact String?   @db.VarChar(30)
   created_at       DateTime? @default(now()) @db.Timestamp(6)
+  pax              pax       @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_pax_dep_pax")
 
-  @@index([pax_id], map: "idx_pax_dependents_pax_id")
   @@map("pax_dependents")
-}
-
-model lead_destination_service {
-  lead_destination_service_id String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  lead_destination_id         String    @db.Uuid
-  service_category_id         String    @db.Uuid
-  service_type_id             String    @db.Uuid
-  service_level_id            String    @db.Uuid
-  remarks                     String?
-  created_at                  DateTime  @default(now()) @db.Timestamp(6)
-  created_by                  String    @db.Uuid
-  modified_at                 DateTime? @db.Timestamp(6)
-  modified_by                 String?   @db.Uuid
-  service_date                DateTime? @db.Date
-  quantity                    Decimal?  @db.Decimal(10, 2)
-  display_order               Int?
-  end_date                    DateTime? @db.Date
-  service_description         String?
-
-  @@unique([lead_destination_id, service_type_id, service_level_id], map: "uq_destination_service_level")
-}
-
-model service_type_level {
-  service_type_id  String @db.Uuid
-  service_level_id String @db.Uuid
-
-  @@id([service_type_id, service_level_id])
 }
 
 model lead_assignment_tracker {
   tracker_id                String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   lead_id                   String    @db.Uuid
-  lead_code                 String?   @db.VarChar(50)
-  contracting_head_user_id  String?   @db.Uuid
-  email_to                  String?   @db.VarChar(150)
-  email_cc                  String?   @db.VarChar(250)
+  lead_code                 String    @db.VarChar(50)
+  contracting_head_user_id  String    @db.Uuid
+  assigned_at               DateTime  @default(now()) @db.Timestamp(6)
+  team_assigned             Boolean?  @default(false)
+  team_assigned_at          DateTime? @db.Timestamp(6)
   reminder_stage            Int?      @default(0)
   max_reminders             Int?      @default(3)
   reminder_interval_minutes Int?      @default(1440)
+  next_reminder_at          DateTime  @db.Timestamp(6)
   last_reminder_sent_at     DateTime? @db.Timestamp(6)
-  next_reminder_at          DateTime? @db.Timestamp(6)
-  team_assigned             Boolean?  @default(false)
-  team_assigned_at          DateTime? @db.Timestamp(6)
-  is_completed              Boolean?  @default(false)
+  email_to                  String
+  email_cc                  String?
   is_active                 Boolean?  @default(true)
+  is_completed              Boolean?  @default(false)
   created_at                DateTime? @default(now()) @db.Timestamp(6)
-  updated_at                DateTime? @db.Timestamp(6)
+  updated_at                DateTime? @default(now()) @db.Timestamp(6)
 }
 
 model auth_user {
-  auth_user_id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  pax_id                   String?   @unique @db.Uuid
-  login_mobile_no          String?   @db.VarChar(30)
-  password_hash            String?
-  is_mobile_verified       Boolean?  @default(false)
-  status                   String?   @default("ACTIVE") @db.VarChar(20)
-  last_login_at            DateTime? @db.Timestamp(6)
-  last_password_changed_at DateTime? @db.Timestamp(6)
-  created_at               DateTime? @default(now()) @db.Timestamp(6)
-  modified_at              DateTime? @db.Timestamp(6)
-  pax                      pax?      @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction)
+  auth_user_id                             String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  pax_id                                   String             @unique @db.Uuid
+  login_email                              String?            @unique @db.VarChar(150)
+  login_mobile_no                          String?            @unique @db.VarChar(30)
+  password_hash                            String?
+  firebase_uid                             String?            @unique @db.VarChar(128)
+  is_email_verified                        Boolean            @default(false)
+  is_mobile_verified                       Boolean            @default(false)
+  is_password_enabled                      Boolean            @default(true)
+  is_otp_enabled                           Boolean            @default(true)
+  is_face_enabled                          Boolean            @default(false)
+  last_login_at                            DateTime?          @db.Timestamp(6)
+  last_password_changed_at                 DateTime?          @db.Timestamp(6)
+  failed_login_attempts                    Int                @default(0)
+  locked_until                             DateTime?          @db.Timestamp(6)
+  status                                   String             @default("ACTIVE") @db.VarChar(20)
+  created_at                               DateTime           @default(now()) @db.Timestamp(6)
+  created_by                               String?            @db.Uuid
+  modified_at                              DateTime?          @db.Timestamp(6)
+  modified_by                              String?            @db.Uuid
+  auth_face_profile                        auth_face_profile?
+  app_user_auth_user_created_byToapp_user  AppUser?           @relation("auth_user_created_byToapp_user", fields: [created_by], references: [userId], onDelete: Restrict)
+  app_user_auth_user_modified_byToapp_user AppUser?           @relation("auth_user_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_auth_user_modified_by")
+  pax                                      pax                @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_auth_user_pax")
+
+  @@index([firebase_uid], map: "idx_auth_user_firebase_uid")
+  @@index([login_email], map: "idx_auth_user_login_email")
+  @@index([login_mobile_no], map: "idx_auth_user_login_mobile_no")
+  @@index([pax_id], map: "idx_auth_user_pax_id")
 }
 
 model pax {
-  pax_id               String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  first_name           String?      @db.VarChar(100)
-  last_name            String?      @db.VarChar(100)
-  email                String?      @db.VarChar(150)
-  mobile_no            String?      @db.VarChar(30)
-  current_country_code String?      @db.VarChar(10)
-  nationality_code     String?      @db.VarChar(10)
-  status               String?      @default("ACTIVE") @db.VarChar(20)
-  is_verified          Boolean?     @default(false)
-  is_guest             Boolean?     @default(false)
-  firebase_uid         String?      @db.VarChar(128)
-  created_at           DateTime?    @default(now()) @db.Timestamp(6)
-  modified_at          DateTime?    @db.Timestamp(6)
-  auth_user            auth_user?
-  pax_device           pax_device[]
-  trip_pax             trip_pax[]
+  pax_id                   String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  pax_code                 String?                 @unique @db.VarChar(50)
+  firebase_uid             String?                 @unique @db.VarChar(128)
+  first_name               String?                 @db.VarChar(100)
+  middle_name              String?                 @db.VarChar(100)
+  last_name                String?                 @db.VarChar(100)
+  display_name             String?                 @db.VarChar(250)
+  gender                   String?                 @db.VarChar(20)
+  date_of_birth            DateTime?               @db.Date
+  nationality_code         String?                 @db.VarChar(10)
+  email                    String?                 @unique @db.VarChar(150)
+  mobile_no                String?                 @db.VarChar(30)
+  alternate_mobile_no      String?                 @db.VarChar(30)
+  profile_photo_url        String?
+  current_address_line_1   String?                 @db.VarChar(250)
+  current_address_line_2   String?                 @db.VarChar(250)
+  current_city             String?                 @db.VarChar(100)
+  current_state_name       String?                 @db.VarChar(100)
+  current_postal_code      String?                 @db.VarChar(20)
+  current_country_code     String?                 @db.VarChar(10)
+  permanent_address_line_1 String?                 @db.VarChar(250)
+  permanent_address_line_2 String?                 @db.VarChar(250)
+  permanent_city           String?                 @db.VarChar(100)
+  permanent_state_name     String?                 @db.VarChar(100)
+  permanent_postal_code    String?                 @db.VarChar(20)
+  permanent_country_code   String?                 @db.VarChar(10)
+  status                   String                  @default("ACTIVE") @db.VarChar(20)
+  is_guest                 Boolean                 @default(false)
+  is_verified              Boolean                 @default(false)
+  remarks                  String?
+  created_at               DateTime                @default(now()) @db.Timestamp(6)
+  modified_at              DateTime?               @db.Timestamp(6)
+  auth_user                auth_user?
+  pax_dependents           pax_dependents[]
+  pax_device               pax_device[]
+  pax_document             pax_document[]
+  pax_emergency_contact    pax_emergency_contact[]
+  pax_notifications        pax_notifications[]
+  pax_sos                  pax_sos[]
+  pax_travel_history       pax_travel_history[]
+  trip_pax                 trip_pax[]
 
-  @@unique([mobile_no, current_country_code], map: "uq_mobile_pax")
+  @@unique([mobile_no, current_country_code], map: "uq_pax_mobile_country")
+  @@index([email], map: "idx_pax_email")
+  @@index([firebase_uid], map: "idx_pax_firebase_uid")
+  @@index([mobile_no], map: "idx_pax_mobile_no")
+  @@index([status], map: "idx_pax_status")
 }
 
 model pax_device {
-  pax_device_id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  pax_id                String?   @db.Uuid
-  device_token          String?   @unique @db.VarChar(255)
-  device_name           String?   @db.VarChar(150)
-  device_type           String?   @db.VarChar(50)
-  firebase_uid          String?   @db.VarChar(150)
-  refresh_token         String?
-  refresh_token_expiry  DateTime? @db.Timestamp(6)
-  is_active             Boolean?  @default(true)
-  last_login_at         DateTime? @db.Timestamp(6)
-  last_token_refresh_at DateTime? @db.Timestamp(6)
-  country               String?   @db.VarChar(100)
-  city                  String?   @db.VarChar(100)
-  created_at            DateTime? @default(now()) @db.Timestamp(6)
-  modified_at           DateTime? @db.Timestamp(6)
-  pax                   pax?      @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction)
+  pax_device_id                             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  pax_id                                    String    @db.Uuid
+  firebase_uid                              String?   @db.VarChar(512)
+  device_token                              String?   @unique(map: "uq_device_token")
+  device_type                               String?   @db.VarChar(50)
+  device_name                               String?   @db.VarChar(150)
+  app_version                               String?   @db.VarChar(30)
+  os_version                                String?   @db.VarChar(30)
+  is_active                                 Boolean   @default(true)
+  last_login_at                             DateTime? @db.Timestamp(6)
+  last_token_refresh_at                     DateTime? @db.Timestamp(6)
+  created_at                                DateTime  @default(now()) @db.Timestamp(6)
+  created_by                                String?   @db.Uuid
+  modified_at                               DateTime? @db.Timestamp(6)
+  modified_by                               String?   @db.Uuid
+  country                                   String?   @db.VarChar(100)
+  refresh_token_expiry                      DateTime? @db.Timestamp(6)
+  ip_address                                String?   @db.VarChar(50)
+  city                                      String?   @db.VarChar(100)
+  refresh_token                             String?
+  app_user_pax_device_created_byToapp_user  AppUser?  @relation("pax_device_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pax_device_created_by")
+  app_user_pax_device_modified_byToapp_user AppUser?  @relation("pax_device_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pax_device_modified_by")
+  pax                                       pax       @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_pax_device_pax")
+
+  @@index([firebase_uid], map: "idx_pax_device_firebase_uid")
+  @@index([pax_id], map: "idx_pax_device_pax_id")
 }
 
 model master_trip_question {
-  question_id   String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  question_text String
-  question_type String?         @db.VarChar(20)
-  options_json  Json?
-  is_active     Boolean?        @default(true)
-  trip_question trip_question[]
+  question_id                                         String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  question_code                                       String          @unique @db.VarChar(50)
+  question_text                                       String
+  question_type                                       String          @db.VarChar(30)
+  answer_options_json                                 Json?
+  default_value_json                                  Json?
+  help_text                                           String?
+  is_mandatory                                        Boolean         @default(false)
+  is_active                                           Boolean         @default(true)
+  display_order                                       Int?
+  created_at                                          DateTime        @default(now()) @db.Timestamp(6)
+  created_by                                          String          @db.Uuid
+  modified_at                                         DateTime?       @db.Timestamp(6)
+  modified_by                                         String?         @db.Uuid
+  app_user_master_trip_question_created_byToapp_user  AppUser         @relation("master_trip_question_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_master_trip_question_created_by")
+  app_user_master_trip_question_modified_byToapp_user AppUser?        @relation("master_trip_question_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_master_trip_question_modified_by")
+  trip_question                                       trip_question[]
+
+  @@index([question_code], map: "idx_master_trip_question_code")
+  @@index([question_type], map: "idx_master_trip_question_type")
 }
 
 model trip {
-  trip_id          String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  lead_id          String?         @db.Uuid
-  trip_name        String          @db.VarChar(200)
-  trip_code        String          @unique @db.VarChar(50)
-  start_date       DateTime?       @db.Date
-  end_date         DateTime?       @db.Date
-  destination_city String?         @db.VarChar(100)
-  booking_deadline DateTime?       @db.Timestamp(6)
-  status           String?         @default("DRAFT") @db.VarChar(20)
-  created_at       DateTime?       @default(now()) @db.Timestamp(6)
-  lead             Lead?           @relation(fields: [lead_id], references: [leadId], onUpdate: NoAction, map: "fk_trip_lead")
-  trip_pax         trip_pax[]
-  trip_question    trip_question[]
+  trip_id                             String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  lead_id                             String                @unique @db.Uuid
+  trip_code                           String                @unique @db.VarChar(50)
+  trip_name                           String                @db.VarChar(200)
+  trip_type                           String                @default("BUSINESS") @db.VarChar(30)
+  trip_category                       String?               @db.VarChar(30)
+  trip_purpose                        String?
+  start_date                          DateTime              @db.Date
+  end_date                            DateTime              @db.Date
+  start_time                          DateTime?             @db.Timestamp(6)
+  end_time                            DateTime?             @db.Timestamp(6)
+  origin_country                      String?               @db.VarChar(10)
+  origin_state                        String?               @db.VarChar(100)
+  origin_city                         String?               @db.VarChar(100)
+  destination_country                 String?               @db.VarChar(10)
+  destination_state                   String?               @db.VarChar(100)
+  destination_city                    String?               @db.VarChar(100)
+  booking_deadline                    DateTime?             @db.Timestamp(6)
+  reporting_time                      DateTime?             @db.Timestamp(6)
+  status                              String                @default("DRAFT") @db.VarChar(30)
+  priority                            String?               @default("NORMAL") @db.VarChar(20)
+  organizer_name                      String?               @db.VarChar(150)
+  organizer_email                     String?               @db.VarChar(150)
+  organizer_mobile                    String?               @db.VarChar(30)
+  notes                               String?
+  remarks                             String?
+  created_at                          DateTime              @default(now()) @db.Timestamp(6)
+  created_by                          String                @db.Uuid
+  modified_at                         DateTime?             @db.Timestamp(6)
+  modified_by                         String?               @db.Uuid
+  tour_code                           String?               @db.VarChar(50)
+  ops_status                          String?               @db.VarChar(30)
+  ops_checklist                       ops_checklist[]
+  ops_execution                       ops_execution?
+  ops_expense_tracker                 ops_expense_tracker[]
+  ops_hotel_booking                   ops_hotel_booking[]
+  ops_itinerary                       ops_itinerary[]
+  ops_reconciliation                  ops_reconciliation[]
+  ops_service_booking                 ops_service_booking[]
+  ops_transport                       ops_transport[]
+  pax_sos                             pax_sos[]
+  app_user_trip_created_byToapp_user  AppUser               @relation("trip_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_created_by")
+  lead                                Lead                  @relation(fields: [lead_id], references: [leadId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_lead")
+  app_user_trip_modified_byToapp_user AppUser?              @relation("trip_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_modified_by")
+  trip_pax                            trip_pax[]
+  trip_pax_service                    trip_pax_service[]
+  trip_pax_sos                        trip_pax_sos[]
+  trip_pax_visa                       trip_pax_visa[]
+  trip_question                       trip_question[]
+  trip_sos_group                      trip_sos_group[]
+  vendor_quote                        vendor_quote[]
+
+  @@index([trip_code], map: "idx_trip_code")
+  @@index([destination_city], map: "idx_trip_destination_city")
+  @@index([end_date], map: "idx_trip_end_date")
+  @@index([lead_id], map: "idx_trip_lead_id")
+  @@index([start_date], map: "idx_trip_start_date")
+  @@index([status], map: "idx_trip_status")
+  @@index([tour_code], map: "idx_trip_tour_code")
 }
 
 model trip_pax {
-  trip_pax_id       String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  trip_id           String              @db.Uuid
-  pax_id            String              @db.Uuid
-  pax_type          String?             @default("PRIMARY") @db.VarChar(20)
-  booking_status    String?             @default("PENDING") @db.VarChar(20)
-  invitation_status String?             @default("PENDING") @db.VarChar(20)
-  response_status   String?             @default("PENDING") @db.VarChar(20)
-  joined_via        String?             @db.VarChar(20)
-  added_by          String?             @db.Uuid
-  added_at          DateTime?           @default(now()) @db.Timestamp(6)
-  pax               pax                 @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_trip_pax_pax")
-  trip              trip                @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_trip_pax_trip")
-  trip_pax_answer   trip_pax_answer[]
-  trip_pax_document trip_pax_document[]
+  trip_pax_id                             String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id                                 String                  @db.Uuid
+  pax_id                                  String                  @db.Uuid
+  pax_type                                String                  @default("PRIMARY") @db.VarChar(30)
+  booking_status                          String                  @default("PENDING") @db.VarChar(30)
+  invitation_status                       String?                 @default("NOT_SENT") @db.VarChar(30)
+  response_status                         String?                 @default("PENDING") @db.VarChar(30)
+  joined_via                              String?                 @db.VarChar(30)
+  qr_code                                 String?                 @db.VarChar(100)
+  check_in_status                         String?                 @db.VarChar(30)
+  check_in_at                             DateTime?               @db.Timestamp(6)
+  check_out_status                        String?                 @db.VarChar(30)
+  check_out_at                            DateTime?               @db.Timestamp(6)
+  remarks                                 String?
+  added_at                                DateTime                @default(now()) @db.Timestamp(6)
+  added_by                                String                  @db.Uuid
+  modified_at                             DateTime?               @db.Timestamp(6)
+  modified_by                             String?                 @db.Uuid
+  unique_code                             String?                 @db.VarChar(50)
+  hub_id                                  String?                 @db.Uuid
+  dealer_id                               String?                 @db.Uuid
+  employee_id                             String?                 @db.VarChar(100)
+  visa_status                             String?                 @default("NOT_STARTED") @db.VarChar(30)
+  ticket_status                           String?                 @default("NOT_STARTED") @db.VarChar(30)
+  pax_status                              String?                 @db.VarChar(30)
+  snapshot_data                           Json?
+  ops_room_pax_mapping                    ops_room_pax_mapping[]
+  ops_ticketing                           ops_ticketing[]
+  pax_interaction_log                     pax_interaction_log[]
+  pax_onboarding_status                   pax_onboarding_status[]
+  app_user_trip_pax_added_byToapp_user    AppUser                 @relation("trip_pax_added_byToapp_user", fields: [added_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_added_by")
+  app_user_trip_pax_modified_byToapp_user AppUser?                @relation("trip_pax_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_modified_by")
+  pax                                     pax                     @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_trip_pax_pax")
+  trip                                    trip                    @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_trip_pax_trip")
+  master_dealer                           master_dealer?          @relation(fields: [dealer_id], references: [dealer_id], onDelete: NoAction, onUpdate: NoAction)
+  master_pickup_hub                       master_pickup_hub?      @relation(fields: [hub_id], references: [hub_id], onDelete: NoAction, onUpdate: NoAction)
+  trip_pax_answer                         trip_pax_answer[]
+  trip_pax_document                       trip_pax_document[]
+  trip_pax_service                        trip_pax_service[]
+  trip_pax_sos                            trip_pax_sos[]
+  trip_pax_visa                           trip_pax_visa[]
 
   @@unique([trip_id, pax_id], map: "uq_trip_pax")
+  @@index([booking_status], map: "idx_trip_pax_booking_status")
+  @@index([pax_id], map: "idx_trip_pax_pax_id")
+  @@index([response_status], map: "idx_trip_pax_response_status")
+  @@index([trip_id], map: "idx_trip_pax_trip_id")
+  @@index([dealer_id], map: "idx_trip_pax_dealer")
+  @@index([hub_id], map: "idx_trip_pax_hub")
+  @@index([unique_code], map: "idx_trip_pax_unique_code")
 }
 
 model trip_pax_answer {
-  answer_id        String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  trip_pax_id      String        @db.Uuid
-  trip_question_id String        @db.Uuid
-  answer_text      String?
-  answer_json      Json?
-  created_at       DateTime?     @default(now()) @db.Timestamp(6)
-  trip_question    trip_question @relation(fields: [trip_question_id], references: [trip_question_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpa_question")
-  trip_pax         trip_pax      @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpa_trip_pax")
+  trip_pax_answer_id                             String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_pax_id                                    String        @db.Uuid
+  trip_question_id                               String        @db.Uuid
+  answer_text                                    String?
+  answer_json                                    Json?
+  created_at                                     DateTime      @default(now()) @db.Timestamp(6)
+  created_by                                     String        @db.Uuid
+  modified_at                                    DateTime?     @db.Timestamp(6)
+  modified_by                                    String?       @db.Uuid
+  app_user_trip_pax_answer_created_byToapp_user  AppUser       @relation("trip_pax_answer_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_answer_created_by")
+  app_user_trip_pax_answer_modified_byToapp_user AppUser?      @relation("trip_pax_answer_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_answer_modified_by")
+  trip_pax                                       trip_pax      @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpa_trip_pax")
+  trip_question                                  trip_question @relation(fields: [trip_question_id], references: [trip_question_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpa_question")
 
-  @@unique([trip_pax_id, trip_question_id], map: "uq_pax_answer")
+  @@unique([trip_pax_id, trip_question_id], map: "uq_trip_pax_answer")
+  @@index([answer_json], map: "idx_trip_pax_answer_answer_json", type: Gin)
+  @@index([trip_pax_id], map: "idx_trip_pax_answer_trip_pax_id")
+  @@index([trip_question_id], map: "idx_trip_pax_answer_trip_question_id")
 }
 
 model trip_pax_document {
-  trip_pax_document_id String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  trip_pax_id          String           @db.Uuid
-  document_id          String?          @db.Uuid
-  file_name            String?          @db.VarChar(255)
-  file_url             String?
-  document_value_json  Json?
-  is_submitted         Boolean?         @default(false)
-  verification_status  String?          @default("PENDING") @db.VarChar(20)
-  created_at           DateTime?        @default(now()) @db.Timestamp(6)
-  master_document      master_document? @relation(fields: [document_id], references: [document_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tpd_master_doc")
-  trip_pax             trip_pax         @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpd_trip_pax")
+  trip_pax_document_id                             String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_pax_id                                      String          @db.Uuid
+  document_id                                      String          @db.Uuid
+  document_number                                  String?         @db.VarChar(150)
+  document_value_json                              Json?
+  issue_date                                       DateTime?       @db.Date
+  expiry_date                                      DateTime?       @db.Date
+  issuing_authority                                String?         @db.VarChar(150)
+  issuing_country_code                             String?         @db.VarChar(10)
+  file_name                                        String?         @db.VarChar(255)
+  file_url                                         String?
+  file_path                                        String?
+  mime_type                                        String?         @db.VarChar(100)
+  file_size_bytes                                  BigInt?
+  is_submitted                                     Boolean         @default(false)
+  is_verified                                      Boolean         @default(false)
+  verification_status                              String          @default("PENDING") @db.VarChar(20)
+  verified_at                                      DateTime?       @db.Timestamp(6)
+  verified_by                                      String?         @db.Uuid
+  rejection_reason                                 String?
+  remarks                                          String?
+  created_at                                       DateTime        @default(now()) @db.Timestamp(6)
+  created_by                                       String          @db.Uuid
+  modified_at                                      DateTime?       @db.Timestamp(6)
+  modified_by                                      String?         @db.Uuid
+  pax_document_id                                  String?         @db.Uuid
+  ocr_confidence                                   Decimal?        @db.Decimal(5, 2)
+  ocr_raw_text                                     String?
+  app_user_trip_pax_document_created_byToapp_user  AppUser         @relation("trip_pax_document_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_document_created_by")
+  master_document                                  master_document @relation(fields: [document_id], references: [document_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tpd_master_doc")
+  app_user_trip_pax_document_modified_byToapp_user AppUser?        @relation("trip_pax_document_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_document_modified_by")
+  trip_pax                                         trip_pax        @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpd_trip_pax")
+  app_user_trip_pax_document_verified_byToapp_user AppUser?        @relation("trip_pax_document_verified_byToapp_user", fields: [verified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_document_verified_by")
+  pax_document                                     pax_document?   @relation(fields: [pax_document_id], references: [pax_document_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([document_id], map: "idx_trip_pax_document_document_id")
+  @@index([document_number], map: "idx_trip_pax_document_document_number")
+  @@index([expiry_date], map: "idx_trip_pax_document_expiry_date")
+  @@index([issue_date], map: "idx_trip_pax_document_issue_date")
+  @@index([trip_pax_id], map: "idx_trip_pax_document_trip_pax_id")
+  @@index([document_value_json], map: "idx_trip_pax_document_value_json", type: Gin)
+  @@index([verification_status], map: "idx_trip_pax_document_verification_status")
 }
 
 model trip_question {
-  trip_question_id     String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  trip_id              String               @db.Uuid
-  master_question_id   String               @db.Uuid
-  is_mandatory         Boolean?             @default(false)
-  display_order        Int?                 @default(0)
-  is_active            Boolean?             @default(true)
-  trip_pax_answer      trip_pax_answer[]
-  master_trip_question master_trip_question @relation(fields: [master_question_id], references: [question_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tq_master")
-  trip                 trip                 @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tq_trip")
+  trip_question_id                             String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id                                      String               @db.Uuid
+  question_id                                  String               @db.Uuid
+  is_mandatory                                 Boolean              @default(false)
+  display_order                                Int?
+  is_active                                    Boolean              @default(true)
+  created_at                                   DateTime             @default(now()) @db.Timestamp(6)
+  created_by                                   String               @db.Uuid
+  modified_at                                  DateTime?            @db.Timestamp(6)
+  modified_by                                  String?              @db.Uuid
+  trip_pax_answer                              trip_pax_answer[]
+  app_user_trip_question_created_byToapp_user  AppUser              @relation("trip_question_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_question_created_by")
+  app_user_trip_question_modified_byToapp_user AppUser?             @relation("trip_question_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_question_modified_by")
+  master_trip_question                         master_trip_question @relation(fields: [question_id], references: [question_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_question_question")
+  trip                                         trip                 @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tq_trip")
+
+  @@unique([trip_id, question_id], map: "uq_trip_question")
+  @@index([question_id], map: "idx_trip_question_question_id")
+  @@index([trip_id], map: "idx_trip_question_trip_id")
 }
 
 model master_document {
-  document_id       String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  document_code     String              @unique @db.VarChar(50)
-  document_name     String              @db.VarChar(150)
-  description       String?
-  is_lead           Boolean?            @default(true)
-  is_pax            Boolean?            @default(true)
-  is_mandatory      Boolean?            @default(false)
+  document_id                                    String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  document_code                                  String              @unique(map: "uq_document_code") @db.VarChar(50)
+  document_name                                  String              @db.VarChar(150)
+  description                                    String?
+  is_corporate                                   Boolean?            @default(false)
+  is_pax                                         Boolean?            @default(false)
+  is_lead                                        Boolean?            @default(false)
+  is_active                                      Boolean?            @default(true)
+  created_at                                     DateTime            @default(now()) @db.Timestamp(6)
+  created_by                                     String              @db.Uuid
+  modified_at                                    DateTime?           @db.Timestamp(6)
+  modified_by                                    String?             @db.Uuid
+  lead_document                                  lead_document[]
+  app_user_master_document_created_byToapp_user  AppUser             @relation("master_document_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_document_created_by")
+  app_user_master_document_modified_byToapp_user AppUser?            @relation("master_document_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_document_modified_by")
+  pax_document                                   pax_document[]
+  trip_pax_document                              trip_pax_document[]
+}
+
+model auth_face_profile {
+  auth_face_profile_id                             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  auth_user_id                                     String    @unique @db.Uuid
+  face_provider                                    String?   @db.VarChar(50)
+  face_template_ref                                String?
+  face_image_url                                   String?
+  enrolled_at                                      DateTime  @default(now()) @db.Timestamp(6)
+  last_verified_at                                 DateTime? @db.Timestamp(6)
+  is_active                                        Boolean   @default(true)
+  created_at                                       DateTime  @default(now()) @db.Timestamp(6)
+  created_by                                       String?   @db.Uuid
+  modified_at                                      DateTime? @db.Timestamp(6)
+  modified_by                                      String?   @db.Uuid
+  auth_user                                        auth_user @relation(fields: [auth_user_id], references: [auth_user_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_auth_face_profile_auth_user")
+  app_user_auth_face_profile_created_byToapp_user  AppUser?  @relation("auth_face_profile_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_auth_face_profile_created_by")
+  app_user_auth_face_profile_modified_byToapp_user AppUser?  @relation("auth_face_profile_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_auth_face_profile_modified_by")
+
+  @@index([auth_user_id], map: "idx_auth_face_profile_auth_user_id")
+}
+
+model fonts {
+  font_id                             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  font_name                           String
+  css_family                          String
+  font_source                         String?
+  font_url                            String?
+  is_active                           Boolean?  @default(true)
+  created_at                          DateTime? @default(now()) @db.Timestamp(6)
+  created_by                          String?   @db.Uuid
+  updated_at                          DateTime? @db.Timestamp(6)
+  updated_by                          String?   @db.Uuid
+  app_user_fonts_created_byToapp_user AppUser?  @relation("fonts_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_fonts_created_by")
+  app_user_fonts_updated_byToapp_user AppUser?  @relation("fonts_updated_byToapp_user", fields: [updated_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_fonts_updated_by")
+
+  @@index([is_active], map: "idx_fonts_active")
+}
+
+model lead_activity_log {
+  activity_id    String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  lead_id        String   @db.Uuid
+  action         String   @db.VarChar(100)
+  details        String?
+  performed_by   String   @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamp(6)
+  old_value      Json?
+  new_value      Json?
+  changed_fields String[]
+  source         String?  @db.VarChar(50)
+  entity_name    String?  @db.VarChar(50)
+  lead           Lead     @relation(fields: [lead_id], references: [leadId], onDelete: Cascade)
+  app_user       AppUser  @relation(fields: [performed_by], references: [userId])
+
+  @@index([created_at(sort: Desc)], map: "idx_lead_activity_created_at")
+  @@index([action], map: "idx_lead_activity_log_action")
+  @@index([created_at], map: "idx_lead_activity_log_created_at")
+  @@index([lead_id], map: "idx_lead_activity_log_lead_id")
+  @@index([new_value], map: "idx_lead_activity_log_new_value", type: Gin)
+}
+
+model lead_document {
+  lead_document_id                             String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  lead_id                                      String          @db.Uuid
+  document_id                                  String          @db.Uuid
+  document_url                                 String
+  file_name                                    String?
+  mime_type                                    String?         @db.VarChar(100)
+  file_size                                    BigInt?
+  created_at                                   DateTime?       @default(now()) @db.Timestamp(6)
+  created_by                                   String?         @db.Uuid
+  modified_at                                  DateTime?       @db.Timestamp(6)
+  modified_by                                  String?         @db.Uuid
+  is_active                                    Boolean?        @default(true)
+  app_user_lead_document_created_byToapp_user  AppUser?        @relation("lead_document_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  master_document                              master_document @relation(fields: [document_id], references: [document_id], onDelete: NoAction, onUpdate: NoAction)
+  lead                                         Lead            @relation(fields: [lead_id], references: [leadId], onDelete: Cascade, onUpdate: NoAction)
+  app_user_lead_document_modified_byToapp_user AppUser?        @relation("lead_document_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([document_id], map: "idx_lead_document_document_id")
+  @@index([lead_id], map: "idx_lead_document_lead_id")
+}
+
+model lead_proposals {
+  proposal_id                                  String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  lead_id                                      String                 @db.Uuid
+  template_id                                  String?                @db.Uuid
+  option_no                                    Int
+  proposal_name                                String?
+  rendered_html                                String?
+  data_snapshot                                Json?
+  status                                       String?                @default("draft")
+  is_active                                    Boolean?               @default(true)
+  created_at                                   DateTime?              @default(now()) @db.Timestamp(6)
+  created_by                                   String?                @db.Uuid
+  updated_at                                   DateTime?              @db.Timestamp(6)
+  updated_by                                   String?                @db.Uuid
+  proposal_type                                String?                @default("ONLINE") @db.VarChar(20)
+  document_url                                 String?
+  app_user_lead_proposals_created_byToapp_user AppUser?               @relation("lead_proposals_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_proposals_created_by")
+  lead                                         Lead                   @relation(fields: [lead_id], references: [leadId], onDelete: NoAction, onUpdate: NoAction, map: "fk_proposals_lead")
+  proposal_templates                           proposal_templates?    @relation(fields: [template_id], references: [template_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_proposals_template")
+  app_user_lead_proposals_updated_byToapp_user AppUser?               @relation("lead_proposals_updated_byToapp_user", fields: [updated_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_proposals_updated_by")
+  proposal_attachments                         proposal_attachments[]
+
+  @@unique([lead_id, option_no], map: "uq_lead_option")
+  @@index([lead_id], map: "idx_proposals_lead")
+  @@index([template_id], map: "idx_proposals_template")
+}
+
+model lead_service {
+  lead_service_id                             String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  lead_id                                     String                @db.Uuid
+  service_category_id                         String                @db.Uuid
+  service_type_id                             String?               @db.Uuid
+  notes                                       String?
+  created_at                                  DateTime              @default(now()) @db.Timestamp(6)
+  created_by                                  String                @db.Uuid
+  modified_at                                 DateTime?             @db.Timestamp(6)
+  modified_by                                 String?               @db.Uuid
+  is_active                                   Boolean?              @default(true)
+  master_service_category                     MasterServiceCategory @relation(fields: [service_category_id], references: [serviceCategoryId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_service_category")
+  app_user_lead_service_created_byToapp_user  AppUser               @relation("lead_service_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_service_created_by")
+  lead                                        Lead                  @relation(fields: [lead_id], references: [leadId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_service_lead")
+  app_user_lead_service_modified_byToapp_user AppUser?              @relation("lead_service_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_service_modified_by")
+  master_service_type                         MasterServiceType?    @relation(fields: [service_type_id], references: [serviceTypeId], onDelete: NoAction, onUpdate: NoAction, map: "fk_lead_service_type")
+  trip_pax_service                            trip_pax_service[]
+}
+
+model pax_emergency_contact {
+  emergency_contact_id                                 String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  pax_id                                               String    @db.Uuid
+  contact_name                                         String    @db.VarChar(150)
+  relationship                                         String?   @db.VarChar(50)
+  country_code                                         String?   @db.VarChar(10)
+  mobile_no                                            String    @db.VarChar(30)
+  email                                                String?   @db.VarChar(150)
+  address                                              String?
+  is_primary                                           Boolean   @default(true)
+  created_at                                           DateTime  @default(now()) @db.Timestamp(6)
+  created_by                                           String?   @db.Uuid
+  modified_at                                          DateTime? @db.Timestamp(6)
+  modified_by                                          String?   @db.Uuid
+  app_user_pax_emergency_contact_created_byToapp_user  AppUser?  @relation("pax_emergency_contact_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pax_emergency_contact_created_by")
+  app_user_pax_emergency_contact_modified_byToapp_user AppUser?  @relation("pax_emergency_contact_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pax_emergency_contact_modified_by")
+  pax                                                  pax       @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_pax_emergency_contact_pax")
+
+  @@index([pax_id], map: "idx_pax_emergency_contact_pax_id")
+}
+
+model proposal_attachments {
+  attachment_id     String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  proposal_id       String         @db.Uuid
+  original_filename String?
+  s3_bucket         String
+  s3_key            String
+  mime_type         String?
+  file_size         Int?
+  created_at        DateTime?      @default(now()) @db.Timestamp(6)
+  created_by        String?        @db.Uuid
+  app_user          AppUser?       @relation(fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_attachment_created_by")
+  lead_proposals    lead_proposals @relation(fields: [proposal_id], references: [proposal_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_attachment_proposal")
+
+  @@index([proposal_id], map: "idx_attachments_proposal")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model proposal_template_media {
+  media_id                                              String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  template_id                                           String             @db.Uuid
+  file_type                                             String?
+  original_filename                                     String?
+  s3_bucket                                             String
+  s3_key                                                String
+  mime_type                                             String?
+  file_size                                             Int?
+  width                                                 Int?
+  height                                                Int?
+  is_active                                             Boolean?           @default(true)
+  created_at                                            DateTime?          @default(now()) @db.Timestamp(6)
+  created_by                                            String?            @db.Uuid
+  updated_at                                            DateTime?          @db.Timestamp(6)
+  updated_by                                            String?            @db.Uuid
+  app_user_proposal_template_media_created_byToapp_user AppUser?           @relation("proposal_template_media_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_media_created_by")
+  proposal_templates                                    proposal_templates @relation(fields: [template_id], references: [template_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_media_template")
+  app_user_proposal_template_media_updated_byToapp_user AppUser?           @relation("proposal_template_media_updated_byToapp_user", fields: [updated_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_media_updated_by")
+
+  @@index([template_id], map: "idx_template_media_template")
+}
+
+model proposal_templates {
+  template_id                                      String                    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  template_name                                    String
+  description                                      String?
+  layout_json                                      Json?
+  html_template                                    String
+  is_active                                        Boolean?                  @default(true)
+  created_at                                       DateTime?                 @default(now()) @db.Timestamp(6)
+  created_by                                       String?                   @db.Uuid
+  updated_at                                       DateTime?                 @db.Timestamp(6)
+  updated_by                                       String?                   @db.Uuid
+  lead_proposals                                   lead_proposals[]
+  proposal_template_media                          proposal_template_media[]
+  app_user_proposal_templates_created_byToapp_user AppUser?                  @relation("proposal_templates_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_templates_created_by")
+  app_user_proposal_templates_updated_byToapp_user AppUser?                  @relation("proposal_templates_updated_byToapp_user", fields: [updated_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_templates_updated_by")
+
+  @@index([is_active], map: "idx_templates_active")
+}
+
+model user_branch_mapping {
+  user_branch_mapping_id String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id                String?   @db.Uuid
+  branch_id              String?   @db.Uuid
+  travel_agency_id       String?   @db.Uuid
+  is_primary             Boolean?  @default(false)
+  is_active              Boolean?  @default(true)
+  created_at             DateTime? @default(now()) @db.Timestamp(6)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model user_data_access_scope {
+  user_data_access_scope_id                                String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id                                                  String              @db.Uuid
+  scope_type                                               String              @db.VarChar(30)
+  branch_id                                                String?             @db.Uuid
+  designation_id                                           String?             @db.Uuid
+  target_user_id                                           String?             @db.Uuid
+  can_view                                                 Boolean?            @default(true)
+  can_edit                                                 Boolean?            @default(false)
+  can_delete                                               Boolean?            @default(false)
+  is_active                                                Boolean?            @default(true)
+  remarks                                                  String?
+  created_at                                               DateTime?           @default(now()) @db.Timestamp(6)
+  created_by                                               String?             @db.Uuid
+  travel_agency_branch                                     TravelAgencyBranch? @relation(fields: [branch_id], references: [branchId], onDelete: Cascade, onUpdate: NoAction, map: "fk_udas_branch")
+  app_user_user_data_access_scope_created_byToapp_user     AppUser?            @relation("user_data_access_scope_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_udas_created_by")
+  master_designation                                       MasterDesignation?  @relation(fields: [designation_id], references: [designationId], onDelete: Cascade, onUpdate: NoAction, map: "fk_udas_designation")
+  app_user_user_data_access_scope_target_user_idToapp_user AppUser?            @relation("user_data_access_scope_target_user_idToapp_user", fields: [target_user_id], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "fk_udas_target_user")
+  app_user_user_data_access_scope_user_idToapp_user        AppUser             @relation("user_data_access_scope_user_idToapp_user", fields: [user_id], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "fk_udas_user")
+
+  @@index([branch_id], map: "idx_udas_branch")
+  @@index([designation_id], map: "idx_udas_designation")
+  @@index([is_active], map: "idx_udas_is_active")
+  @@index([scope_type], map: "idx_udas_scope_type")
+  @@index([target_user_id], map: "idx_udas_target_user")
+  @@index([user_id], map: "idx_udas_user")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model v_hub_name {
+  coalesce String? @db.VarChar
+
+  @@ignore
+}
+
+model flight_sector {
+  sector_id                                           String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  ticket_id                                           String        @db.Uuid
+  from_city_id                                        String?       @db.Uuid
+  to_city_id                                          String?       @db.Uuid
+  departure_time                                      DateTime?     @db.Timestamp(6)
+  arrival_time                                        DateTime?     @db.Timestamp(6)
+  airline_code                                        String?       @db.VarChar(10)
+  flight_number                                       String?       @db.VarChar(20)
+  status                                              String?       @db.VarChar(30)
+  master_city_flight_sector_from_city_idTomaster_city MasterCity?   @relation("flight_sector_from_city_idTomaster_city", fields: [from_city_id], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_fs_from_city")
+  ops_ticketing                                       ops_ticketing @relation(fields: [ticket_id], references: [ticket_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fs_ticket")
+  master_city_flight_sector_to_city_idTomaster_city   MasterCity?   @relation("flight_sector_to_city_idTomaster_city", fields: [to_city_id], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_fs_to_city")
+
+  @@index([ticket_id], map: "idx_fs_ticket")
+}
+
+model master_dealer {
+  dealer_id   String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  dealer_code String?    @db.VarChar(50)
+  dealer_name String     @db.VarChar(200)
+  is_active   Boolean?   @default(true)
+  created_at  DateTime?  @default(now()) @db.Timestamp(6)
+  trip_pax    trip_pax[]
+}
+
+model master_sos_type {
+  sos_type_id  String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sos_code     String?        @unique @db.VarChar(50)
+  sos_name     String?        @db.VarChar(100)
+  priority     Int?           @default(3)
+  is_active    Boolean?       @default(true)
+  created_at   DateTime?      @default(now()) @db.Timestamp(6)
+  trip_pax_sos trip_pax_sos[]
+}
+
+model master_vendor {
+  vendor_id           String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  vendor_name         String
+  vendor_type         String?               @db.VarChar(50)
+  city_id             String?               @db.Uuid
+  country_id          String?               @db.Uuid
+  contact_person      String?
+  contact_number      String?
+  contact_email       String?
+  address             String?
+  is_active           Boolean?              @default(true)
+  created_at          DateTime?             @default(now()) @db.Timestamp(6)
+  master_city         MasterCity?           @relation(fields: [city_id], references: [cityId], onDelete: NoAction, onUpdate: NoAction)
+  master_country      MasterCountry?        @relation(fields: [country_id], references: [countryId], onDelete: NoAction, onUpdate: NoAction)
+  ops_hotel_booking   ops_hotel_booking[]
+  ops_service_booking ops_service_booking[]
+  ops_transport       ops_transport[]
+  trip_pax_service    trip_pax_service[]
+  vendor_quote        vendor_quote[]
+}
+
+model ops_checklist {
+  checklist_id   String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id        String    @db.Uuid
+  checklist_type String?   @db.VarChar(30)
+  item_name      String
+  is_completed   Boolean?  @default(false)
+  completed_at   DateTime? @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  trip           trip      @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_oc_trip")
+}
+
+model ops_execution {
+  ops_execution_id      String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id               String              @unique @db.Uuid
+  execution_status      String?             @default("INITIATED") @db.VarChar(50)
+  handover_status       Boolean?            @default(false)
+  handover_completed_at DateTime?           @db.Timestamp(6)
+  ops_owner_id          String?             @db.Uuid
+  created_at            DateTime?           @default(now()) @db.Timestamp(6)
+  modified_at           DateTime?           @db.Timestamp(6)
+  is_active             Boolean?            @default(true)
+  app_user              AppUser?            @relation(fields: [ops_owner_id], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  trip                  trip                @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction)
+  ops_task_instance     ops_task_instance[]
+
+  @@index([trip_id], map: "idx_ops_execution_trip")
+}
+
+model ops_expense_tracker {
+  expense_id   String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id      String    @db.Uuid
+  expense_type String?   @db.VarChar(50)
+  vendor_name  String?
+  amount       Decimal?  @db.Decimal
+  expense_date DateTime? @db.Date
+  remarks      String?
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  is_active    Boolean?  @default(true)
+  trip         trip      @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model ops_hotel_booking {
+  booking_id          String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id             String                @db.Uuid
+  hotel_name          String?
+  city_id             String?               @db.Uuid
+  checkin             DateTime?             @db.Date
+  checkout            DateTime?             @db.Date
+  created_at          DateTime?             @default(now()) @db.Timestamp(6)
+  is_active           Boolean?              @default(true)
+  vendor_id           String?               @db.Uuid
+  master_city         MasterCity?           @relation(fields: [city_id], references: [cityId], onDelete: NoAction, onUpdate: NoAction)
+  trip                trip                  @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction)
+  master_vendor       master_vendor?        @relation(fields: [vendor_id], references: [vendor_id], onDelete: NoAction, onUpdate: NoAction)
+  ops_room_allocation ops_room_allocation[]
+}
+
+model ops_itinerary {
+  itinerary_id     String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id          String      @db.Uuid
+  day_no           Int
+  title            String?
+  description      String?
+  city_id          String?     @db.Uuid
+  hotel_booking_id String?     @db.Uuid
+  transport_id     String?     @db.Uuid
+  activity_details Json?
+  created_at       DateTime?   @default(now()) @db.Timestamp(6)
+  master_city      MasterCity? @relation(fields: [city_id], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_oi_city")
+  trip             trip        @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_oi_trip")
+
+  @@index([trip_id], map: "idx_oi_trip")
+}
+
+model ops_reconciliation {
+  recon_id       String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id        String    @db.Uuid
+  total_spent    Decimal?  @db.Decimal
+  total_received Decimal?  @db.Decimal
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  trip           trip      @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model ops_room_allocation {
+  room_id              String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  booking_id           String?                @db.Uuid
+  room_type            String?                @db.VarChar(30)
+  room_number          String?
+  created_at           DateTime?              @default(now()) @db.Timestamp(6)
+  is_active            Boolean?               @default(true)
+  ops_hotel_booking    ops_hotel_booking?     @relation(fields: [booking_id], references: [booking_id], onDelete: Cascade, onUpdate: NoAction)
+  ops_room_pax_mapping ops_room_pax_mapping[]
+}
+
+model ops_room_pax_mapping {
+  mapping_id          String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  room_id             String?              @db.Uuid
+  trip_pax_id         String?              @db.Uuid
+  created_at          DateTime?            @default(now()) @db.Timestamp(6)
+  ops_room_allocation ops_room_allocation? @relation(fields: [room_id], references: [room_id], onDelete: Cascade, onUpdate: NoAction)
+  trip_pax            trip_pax?            @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model ops_service_booking {
+  booking_id      String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id         String         @db.Uuid
+  service_type    String         @db.VarChar(50)
+  vendor_id       String?        @db.Uuid
+  booking_status  String?        @default("PENDING") @db.VarChar(30)
+  confirmation_no String?
+  voucher_url     String?
+  cost            Decimal?       @db.Decimal
+  selling_price   Decimal?       @db.Decimal
+  service_date    DateTime?      @db.Date
+  remarks         String?
+  created_at      DateTime?      @default(now()) @db.Timestamp(6)
+  trip            trip           @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_osb_trip")
+  master_vendor   master_vendor? @relation(fields: [vendor_id], references: [vendor_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_osb_vendor")
+
+  @@index([trip_id], map: "idx_osb_trip")
+}
+
+model ops_task_instance {
+  task_instance_id  String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  ops_execution_id  String?            @db.Uuid
+  template_id       String?            @db.Uuid
+  task_status       String?            @default("PENDING") @db.VarChar(30)
+  assigned_to       String?            @db.Uuid
+  started_at        DateTime?          @db.Timestamp(6)
+  completed_at      DateTime?          @db.Timestamp(6)
+  created_at        DateTime?          @default(now()) @db.Timestamp(6)
+  is_active         Boolean?           @default(true)
+  app_user          AppUser?           @relation(fields: [assigned_to], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+  ops_execution     ops_execution?     @relation(fields: [ops_execution_id], references: [ops_execution_id], onDelete: Cascade, onUpdate: NoAction)
+  ops_task_template ops_task_template? @relation(fields: [template_id], references: [template_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([ops_execution_id], map: "idx_task_instance_execution")
+}
+
+model ops_task_template {
+  template_id       String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  stage             String?             @db.VarChar(50)
+  task_name         String?
+  display_order     Int?
+  is_mandatory      Boolean?            @default(true)
   is_active         Boolean?            @default(true)
   created_at        DateTime?           @default(now()) @db.Timestamp(6)
-  created_by        String?             @db.Uuid
-  modified_at       DateTime?           @db.Timestamp(6)
-  modified_by       String?             @db.Uuid
-  trip_pax_document trip_pax_document[]
+  ops_task_instance ops_task_instance[]
+}
+
+model ops_ticketing {
+  ticket_id     String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_pax_id   String          @db.Uuid
+  ticket_status String?         @db.VarChar(30)
+  pnr           String?         @db.VarChar(50)
+  airline_code  String?         @db.VarChar(10)
+  ticket_pdf    String?
+  base_fare     Decimal?        @db.Decimal
+  tax           Decimal?        @db.Decimal
+  total         Decimal?        @db.Decimal
+  seat_no       String?         @db.VarChar(20)
+  meal          String?         @db.VarChar(50)
+  baggage       String?         @db.VarChar(50)
+  created_at    DateTime?       @default(now()) @db.Timestamp(6)
+  is_active     Boolean?        @default(true)
+  flight_sector flight_sector[]
+  trip_pax      trip_pax        @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([trip_pax_id], map: "idx_ticketing_pax")
+}
+
+model ops_transport {
+  transport_id    String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  lead_id         String?        @db.Uuid
+  vendor_name     String?
+  vehicle_type    String?
+  pickup_location String?
+  drop_location   String?
+  status          String?        @db.VarChar(30)
+  created_at      DateTime?      @default(now()) @db.Timestamp(6)
+  transport_type  String?        @db.VarChar(50)
+  service_date    DateTime?      @db.Date
+  service_time    DateTime?      @db.Timestamp(6)
+  from_location   String?
+  to_location     String?
+  trip_id         String?        @db.Uuid
+  vendor_id       String?        @db.Uuid
+  lead            Lead?          @relation(fields: [lead_id], references: [leadId], onDelete: NoAction, onUpdate: NoAction)
+  trip            trip?          @relation(fields: [trip_id], references: [trip_id], onDelete: NoAction, onUpdate: NoAction)
+  master_vendor   master_vendor? @relation(fields: [vendor_id], references: [vendor_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([trip_id], map: "idx_ops_transport_trip")
+}
+
+model pax_document {
+  pax_document_id      String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  pax_id               String              @db.Uuid
+  document_id          String              @db.Uuid
+  document_number      String?             @db.VarChar(150)
+  document_value_json  Json?
+  issue_date           DateTime?           @db.Date
+  expiry_date          DateTime?           @db.Date
+  issuing_country_code String?             @db.VarChar(10)
+  file_name            String?             @db.VarChar(255)
+  file_url             String?
+  ocr_confidence       Decimal?            @db.Decimal(5, 2)
+  ocr_raw_text         String?
+  is_verified          Boolean?            @default(false)
+  verification_status  String?             @default("PENDING") @db.VarChar(20)
+  created_at           DateTime?           @default(now()) @db.Timestamp(6)
+  is_active            Boolean?            @default(true)
+  master_document      master_document     @relation(fields: [document_id], references: [document_id], onDelete: NoAction, onUpdate: NoAction)
+  pax                  pax                 @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction)
+  trip_pax_document    trip_pax_document[]
+
+  @@unique([pax_id, document_id], map: "uq_pax_document")
+}
+
+model pax_interaction_log {
+  interaction_id   String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_pax_id      String    @db.Uuid
+  interaction_type String?   @db.VarChar(30)
+  notes            String?
+  followup_date    DateTime? @db.Timestamp(6)
+  created_by       String?   @db.Uuid
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+  trip_pax         trip_pax  @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_pil_trip_pax")
+  app_user         AppUser?  @relation(fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pil_user")
+
+  @@index([trip_pax_id], map: "idx_pil_trip_pax")
+}
+
+model pax_onboarding_status {
+  onboarding_id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_pax_id             String    @db.Uuid
+  onboarding_status       String?   @default("NOT_STARTED") @db.VarChar(30)
+  documents_completed     Boolean?  @default(false)
+  questionnaire_completed Boolean?  @default(false)
+  verified                Boolean?  @default(false)
+  last_followup_at        DateTime? @db.Timestamp(6)
+  remarks                 String?
+  created_at              DateTime? @default(now()) @db.Timestamp(6)
+  trip_pax                trip_pax  @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_pos_trip_pax")
+
+  @@index([trip_pax_id], map: "idx_pos_trip_pax")
+}
+
+model pax_travel_history {
+  travel_history_id String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  pax_id            String    @db.Uuid
+  country_code      String?   @db.VarChar(10)
+  city              String?   @db.VarChar(100)
+  travel_start_date DateTime? @db.Date
+  travel_end_date   DateTime? @db.Date
+  visa_type         String?   @db.VarChar(50)
+  purpose           String?   @db.VarChar(100)
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  pax               pax       @relation(fields: [pax_id], references: [pax_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model trip_pax_checkin_log {
+  log_id       String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_pax_id  String?   @db.Uuid
+  checkin_time DateTime? @db.Timestamp(6)
+  location     String?
+  status       String?   @db.VarChar(30)
+}
+
+model trip_pax_service {
+  trip_pax_service_id String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id             String?        @db.Uuid
+  trip_pax_id         String         @db.Uuid
+  lead_service_id     String         @db.Uuid
+  service_status      String?        @default("PENDING") @db.VarChar(30)
+  service_cost        Decimal?       @db.Decimal
+  service_date        DateTime?      @db.Date
+  service_time        DateTime?      @db.Timestamp(6)
+  created_at          DateTime?      @default(now()) @db.Timestamp(6)
+  is_active           Boolean?       @default(true)
+  execution_status    String?        @db.VarChar(30)
+  executed_at         DateTime?      @db.Timestamp(6)
+  vendor_id           String?        @db.Uuid
+  lead_service        lead_service   @relation(fields: [lead_service_id], references: [lead_service_id], onDelete: Cascade, onUpdate: NoAction)
+  trip                trip?          @relation(fields: [trip_id], references: [trip_id], onDelete: NoAction, onUpdate: NoAction)
+  trip_pax            trip_pax       @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction)
+  master_vendor       master_vendor? @relation(fields: [vendor_id], references: [vendor_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([trip_pax_id, lead_service_id], map: "uq_trip_pax_service")
+  @@index([trip_id], map: "idx_trip_pax_service_trip")
+}
+
+model trip_pax_sos {
+  sos_id                String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id               String?                 @db.Uuid
+  trip_pax_id           String?                 @db.Uuid
+  sos_type_id           String?                 @db.Uuid
+  latitude              Decimal?                @db.Decimal(9, 6)
+  longitude             Decimal?                @db.Decimal(9, 6)
+  alert_message         String?
+  status                String?                 @default("OPEN") @db.VarChar(30)
+  raised_at             DateTime?               @default(now()) @db.Timestamp(6)
+  resolved_at           DateTime?               @db.Timestamp(6)
+  resolved_by           String?                 @db.Uuid
+  created_at            DateTime?               @default(now()) @db.Timestamp(6)
+  is_active             Boolean?                @default(true)
+  escalated             Boolean?                @default(false)
+  escalated_at          DateTime?               @db.Timestamp(6)
+  location_status       String?                 @db.VarChar(30)
+  manual_location       String?
+  last_known_location   String?
+  master_sos_type       master_sos_type?        @relation(fields: [sos_type_id], references: [sos_type_id], onDelete: NoAction, onUpdate: NoAction)
+  trip                  trip?                   @relation(fields: [trip_id], references: [trip_id], onDelete: NoAction, onUpdate: NoAction)
+  trip_pax              trip_pax?               @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: NoAction, onUpdate: NoAction)
+  trip_sos_notification trip_sos_notification[]
+}
+
+model trip_pax_visa {
+  trip_pax_visa_id  String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id           String?   @db.Uuid
+  trip_pax_id       String    @db.Uuid
+  visa_country_code String?   @db.VarChar(10)
+  visa_type         String?   @db.VarChar(50)
+  visa_status       String?   @default("NOT_APPLIED") @db.VarChar(30)
+  applied_date      DateTime? @db.Date
+  approved_date     DateTime? @db.Date
+  rejection_reason  String?
+  visa_number       String?   @db.VarChar(100)
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  is_active         Boolean?  @default(true)
+  trip              trip?     @relation(fields: [trip_id], references: [trip_id], onDelete: NoAction, onUpdate: NoAction)
+  trip_pax          trip_pax  @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([trip_id], map: "idx_trip_pax_visa_trip")
+}
+
+model trip_sos_group {
+  trip_sos_group_id     String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id               String?                 @db.Uuid
+  group_name            String?                 @db.VarChar(100)
+  is_active             Boolean?                @default(true)
+  created_at            DateTime?               @default(now()) @db.Timestamp(6)
+  trip                  trip?                   @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction)
+  trip_sos_group_member trip_sos_group_member[]
+}
+
+model trip_sos_group_member {
+  id                String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_sos_group_id String?         @db.Uuid
+  user_id           String?         @db.Uuid
+  created_at        DateTime?       @default(now()) @db.Timestamp(6)
+  trip_sos_group    trip_sos_group? @relation(fields: [trip_sos_group_id], references: [trip_sos_group_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user          AppUser?        @relation(fields: [user_id], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([trip_sos_group_id, user_id], map: "uq_sos_group_member")
+}
+
+model trip_sos_notification {
+  notification_id     String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sos_id              String?       @db.Uuid
+  user_id             String?       @db.Uuid
+  notification_status String?       @default("SENT") @db.VarChar(30)
+  sent_at             DateTime?     @default(now()) @db.Timestamp(6)
+  read_at             DateTime?     @db.Timestamp(6)
+  trip_pax_sos        trip_pax_sos? @relation(fields: [sos_id], references: [sos_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user            AppUser?      @relation(fields: [user_id], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([sos_id, user_id], map: "uq_sos_notification")
+}
+
+model user_notifications {
+  notification_id String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id         String?   @db.Uuid
+  title           String?   @db.VarChar(200)
+  message         String?
+  is_read         Boolean?  @default(false)
+  read_at         DateTime? @db.Timestamp(6)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  app_user        AppUser?  @relation(fields: [user_id], references: [userId], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model vendor_confirmation {
+  confirmation_id  String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  quote_id         String       @db.Uuid
+  confirmed_amount Decimal?     @db.Decimal
+  confirmation_ref String?
+  confirmed_at     DateTime?    @db.Timestamp(6)
+  status           String?      @default("CONFIRMED") @db.VarChar(30)
+  vendor_quote     vendor_quote @relation(fields: [quote_id], references: [quote_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_vc_quote")
+}
+
+model vendor_quote {
+  quote_id            String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  trip_id             String                @db.Uuid
+  vendor_id           String                @db.Uuid
+  service_type        String?               @db.VarChar(50)
+  quoted_amount       Decimal?              @db.Decimal
+  valid_till          DateTime?             @db.Date
+  status              String?               @default("RECEIVED") @db.VarChar(30)
+  created_at          DateTime?             @default(now()) @db.Timestamp(6)
+  vendor_confirmation vendor_confirmation[]
+  trip                trip                  @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_vq_trip")
+  master_vendor       master_vendor         @relation(fields: [vendor_id], references: [vendor_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_vq_vendor")
+
+  @@index([trip_id], map: "idx_vq_trip")
 }

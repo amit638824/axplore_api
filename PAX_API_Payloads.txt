@@ -1,0 +1,201 @@
+PAX Mobile App - API Endpoints, Payloads & Responses
+
+Base URL: http://localhost:4000
+
+---
+
+#1. User Registration
+Method: POST
+Endpoint: /api/mobile/v1/auth/registration
+Payload:
+{
+  "mobileNumber": "9876543210",
+  "firstName": "Amar",
+  "middleName": "Kumar",
+  "lastName": "Yadav",
+  "emailAddress": "amar.yadav@example.com",
+  "password": "Strong@123",
+  "gender": "Male",
+  "dob": "15/08/1995"
+}
+
+Response (201 Created):
+{
+  "success": true,
+  "statusCode": 201,
+  "message": "User registered successfully",
+  "data": {
+    "userId": "uuid-here",
+    "mobileNumber": "9876543210",
+    "firstName": "Amar",
+    "emailAddress": "amar.yadav@example.com",
+    "isVerified": false,
+    "createdAt": "2026-04-15T10:30:00Z"
+  }
+}
+
+---
+
+#2. Mobile Number Verification
+Method: POST
+Endpoint: /api/mobile/v1/auth/verify-mobile
+Payload:
+{
+  "mobileNumber": "9876543210"
+}
+
+Response (New User - 200 OK):
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "OTP sent successfully to mobile number",
+  "data": {
+    "mobileNumber": "9876543210",
+    "isValid": true,
+    "isRegistered": false,
+    "otpRequired": true,
+    "nextStep": "VERIFY_OTP",
+    "otpReferenceId": "OTP123456789"
+  }
+}
+
+Response (Already Registered - 409 Conflict):
+{
+  "success": false,
+  "statusCode": 409,
+  "message": "Mobile number is already registered",
+  "data": {
+    "mobileNumber": "9876543210",
+    "isRegistered": true,
+    "nextStep": "LOGIN"
+  }
+}
+
+---
+
+#3. Email Address Verification
+Method: POST
+Endpoint: /api/mobile/v1/auth/verify-email
+Payload:
+{
+  "emailAddress": "amar.yadav@example.com"
+}
+
+Response (New Email - 200 OK):
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "OTP sent successfully to email address",
+  "data": {
+    "emailAddress": "amar.yadav@example.com",
+    "isRegistered": false,
+    "otpRequired": true,
+    "nextStep": "VERIFY_OTP",
+    "otpReferenceId": "EMAILOTP123456"
+  }
+}
+
+---
+
+#4. Mobile OTP Verification (Onboarding)
+Method: POST
+Endpoint: /api/mobile/v1/auth/verify-otp-mobile
+Payload:
+{
+  "mobileNumber": "9876543210",
+  "otp": "123456"
+}
+
+Response (Verified - 200 OK):
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "OTP verified successfully",
+  "data": {
+    "mobileNumber": "9876543210",
+    "isOtpValid": true,
+    "nextStep": "COMPLETE_REGISTRATION"
+  }
+}
+
+Response (Invalid - 400 Bad Request):
+{
+  "success": false,
+  "statusCode": 400,
+  "message": "Invalid OTP",
+  "errors": [
+    { "field": "otp", "message": "The OTP entered is incorrect" }
+  ]
+}
+
+---
+
+#5. Email OTP Verification (Onboarding)
+Method: POST
+Endpoint: /api/mobile/v1/auth/verify-otp-email
+Payload:
+{
+  "emailAddress": "amar.yadav@example.com",
+  "otp": "123456"
+}
+
+Response (200 OK):
+{
+  "success": true,
+  "statusCode": 200,
+  "message": "Email OTP verified successfully",
+  "data": {
+    "emailAddress": "amar.yadav@example.com",
+    "isOtpValid": true,
+    "nextStep": "COMPLETE_REGISTRATION"
+  }
+}
+
+---
+
+#6. Login via Email/Mobile
+Method: POST
+Endpoint: /api/mobile/v1/auth/login
+Payload:
+{
+  "emailAddress": "amar.yadav@example.com",
+  "password": "Strong@123",
+  "deviceId": "ABC123XYZ"
+}
+
+Response (200 OK):
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "accessToken": "eyJhbG...",
+    "refreshToken": "e7eba...",
+    "user": { "pax_id": "...", "first_name": "Amar", ... }
+  }
+}
+
+---
+
+#7. SOS Trigger
+Method: POST
+Endpoint: /api/mobile/v1/sos/trigger
+Headers: Authorization: Bearer <accessToken>
+Payload:
+{
+  "paxId": "USER_UUID_HERE",
+  "mobileNumber": "9876543210",
+  "latitude": "26.8467",
+  "longitude": "80.9462",
+  "locationName": "Hazratganj, Lucknow"
+}
+
+Response (201 Created):
+{
+  "status": true,
+  "message": "SOS alert triggered successfully.",
+  "data": {
+    "sosId": "SOS123456",
+    "paxId": "...",
+    "createdAt": "2026-04-16T12:45:00Z"
+  }
+}

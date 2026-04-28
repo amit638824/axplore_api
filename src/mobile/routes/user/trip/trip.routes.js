@@ -17,7 +17,12 @@ router.get('/:tripId', paxAuth, tripController.getTripById);
 router.post('/passport-upload-front', paxAuth, upload.single('image'), tripController.uploadPassport);
 router.post('/passport-upload-back', paxAuth, upload.single('image'), tripController.uploadPassport);
 
-
-
+// ROADMAP APIs 16-22
+router.post('/additional-documents', paxAuth, tripController.getAdditionalDocuments);
+router.post('/flight-details', paxAuth, tripController.getFlightDetails);
+router.post('/hotel-details', paxAuth, tripController.getHotelDetails);
+router.post('/itinerary', paxAuth, tripController.getItinerary);
+router.post('/downloadable-files', paxAuth, tripController.getDownloadableFiles);
+router.post('/trip-qr-code', paxAuth, tripController.getTripQRCode);
 
 module.exports = router;
