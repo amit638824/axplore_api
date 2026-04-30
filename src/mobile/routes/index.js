@@ -10,7 +10,7 @@ const notificationRoutes = require("./notification/notification.routes");
 
 
 // mobile APIs
-router.use("/auth", mobileAuthRoutes);
+router.use("/onboarding", mobileAuthRoutes);
 router.use("/user", userAuthRoutes);
 router.use("/faq", faqRoutes);
 router.use("/trips", tripRoutes);

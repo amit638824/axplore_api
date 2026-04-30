@@ -1119,10 +1119,10 @@ model trip_pax_answer {
   created_by                                     String        @db.Uuid
   modified_at                                    DateTime?     @db.Timestamp(6)
   modified_by                                    String?       @db.Uuid
+  trip_question                                  trip_question @relation(fields: [trip_question_id], references: [trip_question_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpa_question")
+  trip_pax                                       trip_pax      @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpa_trip_pax")
   app_user_trip_pax_answer_created_byToapp_user  AppUser       @relation("trip_pax_answer_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_answer_created_by")
   app_user_trip_pax_answer_modified_byToapp_user AppUser?      @relation("trip_pax_answer_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_answer_modified_by")
-  trip_pax                                       trip_pax      @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpa_trip_pax")
-  trip_question                                  trip_question @relation(fields: [trip_question_id], references: [trip_question_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpa_question")
 
   @@unique([trip_pax_id, trip_question_id], map: "uq_trip_pax_answer")
   @@index([answer_json], map: "idx_trip_pax_answer_answer_json", type: Gin)
@@ -1159,10 +1159,10 @@ model trip_pax_document {
   pax_document_id                                  String?         @db.Uuid
   ocr_confidence                                   Decimal?        @db.Decimal(5, 2)
   ocr_raw_text                                     String?
-  app_user_trip_pax_document_created_byToapp_user  AppUser         @relation("trip_pax_document_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_document_created_by")
   master_document                                  master_document @relation(fields: [document_id], references: [document_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tpd_master_doc")
-  app_user_trip_pax_document_modified_byToapp_user AppUser?        @relation("trip_pax_document_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_document_modified_by")
   trip_pax                                         trip_pax        @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tpd_trip_pax")
+  app_user_trip_pax_document_created_byToapp_user  AppUser         @relation("trip_pax_document_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_document_created_by")
+  app_user_trip_pax_document_modified_byToapp_user AppUser?        @relation("trip_pax_document_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_document_modified_by")
   app_user_trip_pax_document_verified_byToapp_user AppUser?        @relation("trip_pax_document_verified_byToapp_user", fields: [verified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_pax_document_verified_by")
   pax_document                                     pax_document?   @relation(fields: [pax_document_id], references: [pax_document_id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -1187,10 +1187,10 @@ model trip_question {
   modified_at                                  DateTime?            @db.Timestamp(6)
   modified_by                                  String?              @db.Uuid
   trip_pax_answer                              trip_pax_answer[]
+  trip                                         trip                 @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tq_trip")
   app_user_trip_question_created_byToapp_user  AppUser              @relation("trip_question_created_byToapp_user", fields: [created_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_question_created_by")
   app_user_trip_question_modified_byToapp_user AppUser?             @relation("trip_question_modified_byToapp_user", fields: [modified_by], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_question_modified_by")
   master_trip_question                         master_trip_question @relation(fields: [question_id], references: [question_id], onDelete: NoAction, onUpdate: NoAction, map: "fk_trip_question_question")
-  trip                                         trip                 @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tq_trip")
 
   @@unique([trip_id, question_id], map: "uq_trip_question")
   @@index([question_id], map: "idx_trip_question_question_id")
@@ -1480,6 +1480,8 @@ model flight_sector {
   airline_code                                        String?       @db.VarChar(10)
   flight_number                                       String?       @db.VarChar(20)
   status                                              String?       @db.VarChar(30)
+  departure_terminal                                  String?       @db.VarChar(50)
+  arrival_terminal                                    String?       @db.VarChar(50)
   master_city_flight_sector_from_city_idTomaster_city MasterCity?   @relation("flight_sector_from_city_idTomaster_city", fields: [from_city_id], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_fs_from_city")
   ops_ticketing                                       ops_ticketing @relation(fields: [ticket_id], references: [ticket_id], onDelete: Cascade, onUpdate: NoAction, map: "fk_fs_ticket")
   master_city_flight_sector_to_city_idTomaster_city   MasterCity?   @relation("flight_sector_to_city_idTomaster_city", fields: [to_city_id], references: [cityId], onDelete: NoAction, onUpdate: NoAction, map: "fk_fs_to_city")
@@ -1578,6 +1580,7 @@ model ops_hotel_booking {
   created_at          DateTime?             @default(now()) @db.Timestamp(6)
   is_active           Boolean?              @default(true)
   vendor_id           String?               @db.Uuid
+  booking_reference   String?               @db.VarChar(100)
   master_city         MasterCity?           @relation(fields: [city_id], references: [cityId], onDelete: NoAction, onUpdate: NoAction)
   trip                trip                  @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade, onUpdate: NoAction)
   master_vendor       master_vendor?        @relation(fields: [vendor_id], references: [vendor_id], onDelete: NoAction, onUpdate: NoAction)
@@ -1692,6 +1695,7 @@ model ops_ticketing {
   baggage       String?         @db.VarChar(50)
   created_at    DateTime?       @default(now()) @db.Timestamp(6)
   is_active     Boolean?        @default(true)
+  travel_class  String?         @db.VarChar(50)
   flight_sector flight_sector[]
   trip_pax      trip_pax        @relation(fields: [trip_pax_id], references: [trip_pax_id], onDelete: Cascade, onUpdate: NoAction)
 

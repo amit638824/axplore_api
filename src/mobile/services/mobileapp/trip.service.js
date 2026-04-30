@@ -156,12 +156,10 @@ exports.getTripById = async (paxId, tripId) => {
     throw new Error("Trip ID is required");
   }
 
-  const tripPax = await prisma.trip_pax.findUnique({
+  const tripPax = await prisma.trip_pax.findFirst({
     where: {
-      trip_id_pax_id: {
-        trip_id: tripId,
-        pax_id: paxId
-      }
+      trip_id: tripId,
+      pax_id: paxId
     },
     select: {
       trip_pax_id: true,
@@ -406,12 +404,12 @@ exports.joinTrip = async (paxId, appUserId, data) => {
     throw new ValidationError("Trip is not open for joining");
   }
 
-  if (
+  /* if (
     trip.booking_deadline &&
     new Date(trip.booking_deadline) < new Date()
   ) {
     throw new ValidationError("Booking deadline has expired");
-  }
+  } */
 
   const existingTripPax = await prisma.trip_pax.findFirst({
     where: {
@@ -439,7 +437,7 @@ exports.joinTrip = async (paxId, appUserId, data) => {
       invitation_status: "ACCEPTED",
       response_status: "ACCEPTED",
       joined_via: finalJoinedVia,
-      added_by: appUserId,
+      added_by: appUserId || "6e819b21-98d4-4ae0-830a-707b6aa393b5",
     },
     select: {
       trip_pax_id: true,
@@ -561,12 +559,10 @@ exports.updateTripUserDetails = async (paxId, tripId, userDetails) => {
 
 exports.uploadPaxDocument = async (paxId, tripId, documentType, fileUrl, scannedText) => {
   try {
-    const tripPax = await prisma.trip_pax.findUnique({
+    const tripPax = await prisma.trip_pax.findFirst({
       where: {
-        trip_id_pax_id: {
-          trip_id: tripId,
-          pax_id: paxId
-        }
+        trip_id: tripId,
+        pax_id: paxId
       }
     });
 
@@ -584,13 +580,17 @@ exports.uploadPaxDocument = async (paxId, tripId, documentType, fileUrl, scanned
       }
     });
 
+    if (!masterDoc) {
+      throw new ValidationError(`Invalid document type: ${documentType}`);
+    }
+
     const isPassportFront = documentType === 'passport_front';
-    
+
     // Create or update the document record
     const doc = await prisma.trip_pax_document.create({
       data: {
         trip_pax_id: tripPax.trip_pax_id,
-        document_id: masterDoc ? masterDoc.document_id : 'default-doc-uuid',
+        document_id: masterDoc.document_id,
         file_url: fileUrl,
         file_name: isPassportFront ? 'Passport Front' : 'Passport Back',
         document_value_json: scannedText,
@@ -628,108 +628,171 @@ exports.uploadPaxDocument = async (paxId, tripId, documentType, fileUrl, scanned
 };
 
 exports.getFlightDetails = async (paxId, tripId) => {
-  const flight = await prisma.trip_flight.findFirst({
-    where: { trip_id: tripId }
+  const tripPax = await prisma.trip_pax.findUnique({
+    where: { trip_id_pax_id: { trip_id: tripId, pax_id: paxId } }
+  });
+  if (!tripPax) throw new NotFoundError("Trip participation");
+
+  const ticket = await prisma.ops_ticketing.findFirst({
+    where: { trip_pax_id: tripPax.trip_pax_id },
+    include: {
+      flight_sector: {
+        include: {
+          master_city_flight_sector_from_city_idTomaster_city: true,
+          master_city_flight_sector_to_city_idTomaster_city: true
+        }
+      }
+    }
   });
 
-  if (!flight) throw new NotFoundError("Flight details");
+  if (!ticket || ticket.flight_sector.length === 0) {
+    throw new NotFoundError("Flight details");
+  }
+
+  const primarySector = ticket.flight_sector[0];
+  const fromCity = primarySector.master_city_flight_sector_from_city_idTomaster_city;
+  const toCity = primarySector.master_city_flight_sector_to_city_idTomaster_city;
+
+  // Retrieve Airport Info from Cities
+  let departureHub = null;
+  if (primarySector.from_city_id) {
+    departureHub = await prisma.master_pickup_hub.findFirst({
+      where: { city_id: primarySector.from_city_id, is_active: true }
+    });
+  }
+
+  let arrivalHub = null;
+  if (primarySector.to_city_id) {
+    arrivalHub = await prisma.master_pickup_hub.findFirst({
+      where: { city_id: primarySector.to_city_id, is_active: true }
+    });
+  }
 
   return {
     flight: {
-      airline: flight.airline,
-      flightNumber: flight.flight_number
+      airline: ticket.airline_code || primarySector.airline_code,
+      flightNumber: primarySector.flight_number
     },
     departure: {
-      time: flight.departure_time,
-      date: flight.departure_date,
+      time: primarySector.departure_time,
+      date: primarySector.departure_time,
       airport: {
-        name: flight.departure_airport_name,
-        code: flight.departure_airport_code,
-        terminal: flight.departure_terminal
+        name: departureHub ? departureHub.hub_name : (fromCity ? fromCity.name : "N/A"),
+        code: departureHub ? departureHub.hub_code_iata : "N/A",
+        terminal: primarySector.departure_terminal || null
       }
     },
-    duration: flight.duration,
+    duration: "N/A", // Calculated on UI or Needs custom logic
     arrival: {
-      time: flight.arrival_time,
-      date: flight.arrival_date,
+      time: primarySector.arrival_time,
+      date: primarySector.arrival_time,
       airport: {
-        name: flight.arrival_airport_name,
-        code: flight.arrival_airport_code,
-        terminal: flight.arrival_terminal
+        name: arrivalHub ? arrivalHub.hub_name : (toCity ? toCity.name : "N/A"),
+        code: arrivalHub ? arrivalHub.hub_code_iata : "N/A",
+        terminal: primarySector.arrival_terminal || null
       }
     },
     bookingInfo: {
-      bookingReference: flight.booking_reference,
-      class: flight.class,
-      baggage: flight.baggage
+      bookingReference: ticket.pnr,
+      class: ticket.travel_class || "Economy",
+      seatNumber: ticket.seat_no,
+      baggage: ticket.baggage || "20 kg"
     }
   };
 };
 
 exports.getHotelDetails = async (paxId, tripId) => {
-  const hotel = await prisma.trip_hotel.findFirst({
-    where: { trip_id: tripId }
+  const tripPax = await prisma.trip_pax.findFirst({
+    where: { trip_id: tripId, pax_id: paxId }
+  });
+  if (!tripPax) throw new NotFoundError("Trip participation");
+
+  // Assuming hotel is booked at the trip level and pax is mapped via room allocation
+  const hotel = await prisma.ops_hotel_booking.findFirst({
+    where: { trip_id: tripId },
+    include: {
+      master_vendor: true,
+      ops_room_allocation: {
+        include: {
+          ops_room_pax_mapping: {
+            where: { trip_pax_id: tripPax.trip_pax_id }
+          }
+        }
+      }
+    }
   });
 
   if (!hotel) throw new NotFoundError("Hotel details");
 
+  let userRoom = hotel.ops_room_allocation.find(room => room.ops_room_pax_mapping.length > 0);
+  if (!userRoom && hotel.ops_room_allocation.length > 0) {
+     userRoom = hotel.ops_room_allocation[0]; // fallback
+  }
+
+  const vendor = hotel.master_vendor;
+
   return {
     hotel: {
-      name: hotel.hotel_name,
-      address: hotel.address
+      name: hotel.hotel_name || (vendor ? vendor.vendor_name : null),
+      address: vendor ? vendor.address : null
     },
     stayDetails: {
       checkIn: {
-        date: hotel.check_in_date,
-        time: hotel.check_in_time
+        date: hotel.checkin,
+        time: hotel.checkin
       },
       checkOut: {
-        date: hotel.check_out_date,
-        time: hotel.check_out_time
+        date: hotel.checkout,
+        time: hotel.checkout
       },
-      numberOfNights: hotel.number_of_nights,
-      roomType: hotel.room_type,
-      guests: hotel.guests_count
+      numberOfNights: null, // UI handles or can be diff of dates
+      roomType: userRoom ? userRoom.room_type : null,
+      guests: userRoom ? userRoom.ops_room_pax_mapping.length : 1
     },
     bookingInfo: {
-      bookingReference: hotel.booking_reference
+      bookingReference: hotel.booking_reference || hotel.booking_id
     },
     contactInformation: {
-      phone: hotel.phone,
-      email: hotel.email
+      phone: vendor ? vendor.contact_number : null,
+      email: vendor ? vendor.contact_email : null
     }
   };
 };
 
 exports.getItinerary = async (paxId, tripId) => {
-  const items = await prisma.trip_itinerary.findMany({
+  const items = await prisma.ops_itinerary.findMany({
     where: { trip_id: tripId },
-    orderBy: [
-      { day_number: 'asc' },
-      { activity_time: 'asc' }
-    ]
+    orderBy: { day_no: 'asc' }
   });
 
-  // Group by day
-  const days = [];
-  items.forEach(item => {
-    let day = days.find(d => d.day === item.day_number);
-    if (!day) {
-      day = {
-        day: item.day_number,
-        date: item.date,
-        totalActivities: 0,
-        activities: []
-      };
-      days.push(day);
+  const trip = await prisma.trip.findUnique({ where: { trip_id: tripId }, select: { start_date: true }});
+  
+  if (items.length === 0) {
+     throw new NotFoundError("Itinerary not found");
+  }
+
+  const days = items.map(item => {
+    let date = null;
+    if (trip && trip.start_date) {
+        date = new Date(trip.start_date);
+        date.setDate(date.getDate() + (item.day_no - 1));
     }
-    day.activities.push({
-      time: item.activity_time,
-      title: item.title,
-      location: item.location,
-      description: item.description
-    });
-    day.totalActivities++;
+    
+    let activities = [];
+    if (item.activity_details) {
+      if (typeof item.activity_details === 'string') {
+        try { activities = JSON.parse(item.activity_details); } catch(e) {}
+      } else if (Array.isArray(item.activity_details)) {
+        activities = item.activity_details;
+      }
+    }
+
+    return {
+      day: item.day_no,
+      date: date,
+      totalActivities: activities.length,
+      activities: activities
+    };
   });
 
   return {
@@ -740,8 +803,8 @@ exports.getItinerary = async (paxId, tripId) => {
 };
 
 exports.getAdditionalDocuments = async (paxId, tripId) => {
-  const tripPax = await prisma.trip_pax.findUnique({
-    where: { trip_id_pax_id: { trip_id: tripId, pax_id: paxId } }
+  const tripPax = await prisma.trip_pax.findFirst({
+    where: { trip_id: tripId, pax_id: paxId }
   });
 
   if (!tripPax) throw new NotFoundError("Trip participation");
@@ -773,34 +836,60 @@ exports.getDownloadableFiles = async (paxId, tripId) => {
 
   if (!tripPax) throw new NotFoundError("Trip participation");
 
-  const docs = await prisma.trip_pax_document.findMany({
-    where: { 
-      trip_pax_id: tripPax.trip_pax_id,
-      is_submitted: true,
-      verification_status: 'VERIFIED' // Only verified docs usually downloadable
+  // 1. Fetch Pax Documents
+  const paxDocs = await prisma.trip_pax_document.findMany({
+    where: { trip_pax_id: tripPax.trip_pax_id, is_submitted: true },
+    include: { master_document: true }
+  });
+
+  // 2. Fetch Tickets
+  const tickets = await prisma.ops_ticketing.findMany({
+    where: { trip_pax_id: tripPax.trip_pax_id, is_active: true }
+  });
+
+  const allDocuments = [];
+
+  paxDocs.forEach(d => {
+    if(d.file_url) {
+      allDocuments.push({
+        documentId: d.trip_pax_document_id,
+        title: d.file_name || d.master_document.document_name,
+        type: 'document',
+        fileFormat: d.mime_type || 'PDF',
+        fileSize: d.file_size_bytes ? `${Math.round(Number(d.file_size_bytes)/1024)} KB` : 'N/A',
+        uploadedDate: d.created_at,
+        fileUrl: d.file_url
+      });
+    }
+  });
+
+  tickets.forEach(t => {
+    if(t.ticket_pdf) {
+      allDocuments.push({
+        documentId: t.ticket_id,
+        title: 'Flight Ticket - ' + (t.airline_code || t.pnr || 'Air'),
+        type: 'ticket',
+        fileFormat: 'PDF',
+        fileSize: 'N/A',
+        uploadedDate: t.created_at,
+        fileUrl: t.ticket_pdf
+      });
     }
   });
 
   return {
     paxId,
     tripId,
-    totalFiles: docs.length,
+    totalFiles: allDocuments.length,
     downloadAllUrl: null, // Placeholder
-    documents: docs.map(d => ({
-      documentId: d.trip_pax_document_id,
-      title: d.file_name,
-      type: 'PDF',
-      fileFormat: 'PDF',
-      fileSize: 'N/A',
-      uploadedDate: d.created_at,
-      fileUrl: d.file_url
-    }))
+    documents: allDocuments
   };
 };
 
 exports.getTripQRCode = async (paxId, tripId) => {
   const tripPax = await prisma.trip_pax.findUnique({
-    where: { trip_id_pax_id: { trip_id: tripId, pax_id: paxId } }
+    where: { trip_id_pax_id: { trip_id: tripId, pax_id: paxId } },
+    include: { trip: true }
   });
 
   if (!tripPax) throw new NotFoundError("Trip participation");
@@ -809,7 +898,7 @@ exports.getTripQRCode = async (paxId, tripId) => {
     paxId,
     tripId,
     qrCodeUrl: tripPax.qr_code || "https://placeholder-qr-link.com",
-    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+    expiresAt: tripPax.qr_expires_at || tripPax.trip.end_date
   };
 };
 

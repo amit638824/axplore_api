@@ -30,6 +30,14 @@ exports.getTripById = async (req, res, next) => {
     const userId = req.user.pax_id;
     const { tripId } = req.params;
 
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(tripId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Trip ID format"
+      });
+    }
+
     const result = await tripService.getTripById(userId, tripId);
 
     return success(res, result);
@@ -81,7 +89,12 @@ exports.updateTripDetails = async (req, res, next) => {
 
 exports.uploadPassport = async (req, res, next) => {
   try {
-    if (!req.file) throw new Error("No file uploaded");
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded"
+      });
+    }
     const paxId = req.user.pax_id;
     const { tripId, documentType, scannedText } = req.body;
     
