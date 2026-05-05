@@ -4,30 +4,20 @@ const Joi = require('joi');
  * SOS Trigger Validation Schema
  */
 const triggerSosSchema = Joi.object({
+  paxID: Joi.string()
+    .optional()
+    .allow(null, '')
+    .messages({
+      'string.base': 'paxID must be a string',
+    }),
+
   paxId: Joi.string()
-    .uuid()
     .optional()
-    .allow(null, '')
-    .messages({
-      'string.guid': 'paxId must be a valid UUID',
-    }),
-
-
-  tripId: Joi.string()
-    .uuid()
-    .optional()
-    .allow(null, '')
-    .messages({
-      'string.guid': 'tripId must be a valid UUID',
-    }),
+    .allow(null, ''),
     
   mobileNumber: Joi.string()
-    .pattern(/^[0-9]{10,15}$/)
-    .required()
-    .messages({
-      'string.pattern.base': 'Mobile number must be between 10 to 15 digits',
-      'any.required': 'mobileNumber is required',
-    }),
+    .allow(null, '')
+    .optional(),
     
   latitude: Joi.string()
     .required()
@@ -54,6 +44,7 @@ const triggerSosSchema = Joi.object({
     }),
 
 });
+
 
 
 module.exports = {

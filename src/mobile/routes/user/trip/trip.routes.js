@@ -8,6 +8,7 @@ const { paxAuth } = require("../../../middleware/paxAuth.js");
 
 router.get('/my-trips', paxAuth, tripController.getMyTrips);
 router.post('/join-trip', paxAuth, tripController.joinTrip);
+router.post('/add-trip', paxAuth, tripController.addTrip);
 router.post('/status-tracker', paxAuth, tripController.getStatusTracker);
 router.post('/trip-info-update', paxAuth, tripController.updateTripDetails);
 router.get('/:tripId', paxAuth, tripController.getTripById);

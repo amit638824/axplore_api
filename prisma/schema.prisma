@@ -1027,6 +1027,8 @@ model trip {
   modified_by                         String?               @db.Uuid
   tour_code                           String?               @db.VarChar(50)
   ops_status                          String?               @db.VarChar(30)
+  final_option                        String?               @db.VarChar(255)
+  final_budget                        Decimal?              @db.Decimal(10, 2)
   ops_checklist                       ops_checklist[]
   ops_execution                       ops_execution?
   ops_expense_tracker                 ops_expense_tracker[]

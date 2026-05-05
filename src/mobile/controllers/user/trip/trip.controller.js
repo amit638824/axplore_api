@@ -189,4 +189,17 @@ exports.getTripQRCode = async (req, res, next) => {
   }
 };
 
+exports.addTrip = async (req, res, next) => {
+  try {
+    const { PaxId, paxId, tripId } = req.body;
+    const finalPaxId = PaxId || paxId || req.user.pax_id;
+    
+    const result = await tripService.addTrip(finalPaxId, tripId);
+    return res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+
 

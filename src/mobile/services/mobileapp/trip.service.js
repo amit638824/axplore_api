@@ -902,4 +902,34 @@ exports.getTripQRCode = async (paxId, tripId) => {
   };
 };
 
+exports.addTrip = async (paxId, tripId) => {
+  // Check if trip exists
+  const trip = await prisma.trip.findUnique({
+    where: { trip_id: tripId }
+  });
+  if (!trip) throw new NotFoundError("Trip");
+
+  // Check if already joined
+  const existing = await prisma.trip_pax.findUnique({
+    where: { trip_id_pax_id: { trip_id: tripId, pax_id: paxId } }
+  });
+
+  if (existing) {
+    return { success: true, message: "Trip already added" };
+  }
+
+  await prisma.trip_pax.create({
+    data: {
+      trip_id: tripId,
+      pax_id: paxId,
+      added_by: "6e819b21-98d4-4ae0-830a-707b6aa393b5", // System/Admin fallback
+      booking_status: "CONFIRMED",
+      pax_type: "PRIMARY"
+    }
+  });
+
+  return { success: true, message: "Trip Added Successfully" };
+};
+
+
 

@@ -32,3 +32,15 @@ exports.triggerSos = asyncHandler(async (req, res) => {
     });
   }
 });
+
+/**
+ * Get SOS Master List
+ */
+exports.getMasterList = asyncHandler(async (req, res) => {
+  const data = await service.getMasterList();
+  return res.status(200).json({
+    status: true,
+    message: "SOS master list fetched successfully.",
+    data
+  });
+});
